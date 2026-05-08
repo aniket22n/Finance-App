@@ -3,11 +3,12 @@ const Payment = require('../models/Payment');
 const Group = require('../models/Group');
 const { auth, adminOnly } = require('../middleware/auth');
 const { sendPushNotification } = require('../utils/notifications');
+const { validate, initiatePaymentValidations } = require('../middleware/validators');
 
 const router = express.Router();
 
 // POST /api/payments/initiate — Record a payment intent
-router.post('/initiate', auth, async (req, res) => {
+router.post('/initiate', auth, initiatePaymentValidations, validate, async (req, res) => {
     try {
         const { groupId, month, amount, upiRef, upiTransactionId, paymentMethod, receipt } = req.body;
 

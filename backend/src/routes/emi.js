@@ -5,11 +5,12 @@ const Payment = require('../models/Payment');
 const { auth, adminOnly } = require('../middleware/auth');
 const { calculateMonthlyDues, calculatePotTotal } = require('../utils/emiEngine');
 const { sendPushNotification, sendBulkNotifications } = require('../utils/notifications');
+const { validate, createCycleValidations } = require('../middleware/validators');
 
 const router = express.Router();
 
 // POST /api/emi/cycle — Create next EMI cycle (admin only)
-router.post('/cycle', auth, adminOnly, async (req, res) => {
+router.post('/cycle', auth, adminOnly, createCycleValidations, validate, async (req, res) => {
     try {
         const { groupId, winnerId } = req.body;
 

@@ -3,11 +3,12 @@ const Group = require('../models/Group');
 const User = require('../models/User');
 const { auth, adminOnly } = require('../middleware/auth');
 const { validateGroupConfig, getGroupSummary } = require('../utils/emiEngine');
+const { validate, createGroupValidations, updateGroupValidations, addMemberValidations } = require('../middleware/validators');
 
 const router = express.Router();
 
 // POST /api/groups — Create group (admin only)
-router.post('/', auth, adminOnly, async (req, res) => {
+router.post('/', auth, adminOnly, createGroupValidations, validate, async (req, res) => {
     try {
         const { name, description, potAmount, emiAmount, reducedEmi, minMembers, maxMembers, totalMonths } = req.body;
 
@@ -83,7 +84,7 @@ router.get('/:id', auth, async (req, res) => {
 });
 
 // PUT /api/groups/:id — Update group config (admin only)
-router.put('/:id', auth, adminOnly, async (req, res) => {
+router.put('/:id', auth, adminOnly, updateGroupValidations, validate, async (req, res) => {
     try {
         const { name, description, potAmount, emiAmount, reducedEmi, minMembers, maxMembers, totalMonths, status } = req.body;
         const updates = {};
@@ -109,7 +110,7 @@ router.put('/:id', auth, adminOnly, async (req, res) => {
 });
 
 // POST /api/groups/:id/members — Add member to group
-router.post('/:id/members', auth, adminOnly, async (req, res) => {
+router.post('/:id/members', auth, adminOnly, addMemberValidations, validate, async (req, res) => {
     try {
         const { userId } = req.body;
         const group = await Group.findById(req.params.id);

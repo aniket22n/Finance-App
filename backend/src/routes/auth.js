@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const { auth } = require('../middleware/auth');
 const config = require('../config/appConfig');
+const { validate, sendOtpValidations, verifyOtpValidations } = require('../middleware/validators');
 
 const router = express.Router();
 
@@ -45,10 +46,9 @@ setInterval(() => {
 }, 10 * 60 * 1000);
 
 // POST /api/auth/send-otp
-router.post('/send-otp', async (req, res) => {
+router.post('/send-otp', sendOtpValidations, validate, async (req, res) => {
     try {
         const { phone } = req.body;
-        if (!phone) return res.status(400).json({ error: 'Phone number is required' });
 
         // Rate limiting check
         const rateCheck = checkRateLimit(phone);
@@ -105,10 +105,9 @@ router.post('/send-otp', async (req, res) => {
 });
 
 // POST /api/auth/verify-otp
-router.post('/verify-otp', async (req, res) => {
+router.post('/verify-otp', verifyOtpValidations, validate, async (req, res) => {
     try {
         const { phone, otp } = req.body;
-        if (!phone || !otp) return res.status(400).json({ error: 'Phone and OTP are required' });
 
         const user = await User.findOne({ phone });
         if (!user) return res.status(404).json({ error: 'User not found' });
