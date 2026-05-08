@@ -5,19 +5,19 @@ const auth = async (req, res, next) => {
     try {
         const token = req.header('Authorization')?.replace('Bearer ', '');
         if (!token) {
-            return res.status(401).json({ error: 'Access denied. No token provided.' });
+            return res.status(401).json({ error: true, message: 'Access denied. No token provided.' });
         }
 
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
         const user = await User.findById(decoded.userId).select('-otp -otpExpiresAt');
         if (!user || !user.isActive) {
-            return res.status(401).json({ error: 'Invalid token or inactive account.' });
+            return res.status(401).json({ error: true, message: 'Invalid token or inactive account.' });
         }
 
         req.user = user;
         next();
     } catch (error) {
-        res.status(401).json({ error: 'Invalid or expired token.' });
+        res.status(401).json({ error: true, message: 'Invalid or expired token.' });
     }
 };
 

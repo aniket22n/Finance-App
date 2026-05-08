@@ -50,13 +50,21 @@ app.use('/api/admin', adminRoutes);
 
 // 404 handler
 app.use((req, res) => {
-    res.status(404).json({ error: 'Route not found' });
+    res.status(404).json({ error: true, message: 'Route not found' });
 });
 
 // Global error handler
 app.use((err, req, res, next) => {
-    console.error('💥 Server Error:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('💥 Server Error:', err.message);
+    const status = err.status || 500;
+    const response = { error: true, message: err.message || 'Internal server error' };
+
+    // Include stack trace in dev mode
+    if (process.env.NODE_ENV !== 'production' && err.stack) {
+        response.stack = err.stack.split('\n').slice(1, 3).join('\n');
+    }
+
+    res.status(status).json(response);
 });
 
 // Start server
