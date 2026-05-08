@@ -2,6 +2,7 @@
  * Shared Validation Rules for express-validator
  */
 const { body, param, query } = require('express-validator');
+const { validate } = require('./validate');
 
 // ─── Common Rules ───
 
