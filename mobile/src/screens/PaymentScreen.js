@@ -24,6 +24,7 @@ export default function PaymentScreen() {
     const [paymentMethod, setPaymentMethod] = useState('');
     const [utrNumber, setUtrNumber] = useState('');
     const [receiptBase64, setReceiptBase64] = useState(null);
+    const [submitting, setSubmitting] = useState(false);
 
     const loadData = async () => {
         try {
@@ -61,7 +62,8 @@ export default function PaymentScreen() {
     };
 
     const submitPayment = async (method = paymentMethod) => {
-        if (!selectedPending) return;
+        if (!selectedPending || submitting) return;
+        setSubmitting(true);
         try {
             await initiatePayment({
                 groupId: selectedPending.group._id,
@@ -71,11 +73,23 @@ export default function PaymentScreen() {
                 upiTransactionId: utrNumber,
                 receipt: receiptBase64,
             });
-            Alert.alert('Success', 'Payment submitted for verification!');
             setModalVisible(false);
-            loadData();
+            // Clear form
+            setPaymentMethod('');
+            setUtrNumber('');
+            setReceiptBase64(null);
+            Alert.alert(
+                '✅ Payment Submitted',
+                'Your payment is pending verification. You will be notified once verified.',
+                [{ text: 'OK', onPress: () => loadData() }]
+            );
         } catch (err) {
-            Alert.alert('Error', err.response?.data?.error || err.message);
+            Alert.alert(
+                '❌ Payment Failed',
+                err.response?.data?.error || 'Something went wrong. Please try again.'
+            );
+        } finally {
+            setSubmitting(false);
         }
     };
 
@@ -138,6 +152,14 @@ export default function PaymentScreen() {
 
             {pendingPayments.length > 0 && (
                 <>
+                    {pendingPayments.length > 0 && (
+                        <View style={styles.pendingBanner}>
+                            <Ionicons name="alert-circle" size={18} color="#f0a500" />
+                            <Text style={styles.pendingBannerText}>
+                                You have {pendingPayments.length} pending payment{pendingPayments.length > 1 ? 's' : ''}
+                            </Text>
+                        </View>
+                    )}
                     <Text style={styles.sectionTitle}>Pending ({pendingPayments.length})</Text>
                     {pendingPayments.map((payment) => {
                         const group = groups.find(g => g._id === (payment.group?._id || payment.group));
@@ -171,11 +193,12 @@ export default function PaymentScreen() {
             <View style={{ height: 40 }} />
 
             {/* Payment Options Modal */}
-            <Modal visible={modalVisible} transparent={true} animationType="slide">
+            <Modal visible={modalVisible} transparent={true} animationType="slide" onRequestClose={() => !submitting && setModalVisible(false)}>
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
                         <View style={styles.modalHeader}>
                             <Text style={styles.modalTitle}>Choose Payment Method</Text>
+                            {!submitting && (
                             <TouchableOpacity onPress={() => setModalVisible(false)}>
                                 <Ionicons name="close" size={24} color="#8899aa" />
                             </TouchableOpacity>
@@ -253,6 +276,8 @@ const styles = StyleSheet.create({
     center: { flex: 1, backgroundColor: '#1a1a2e', alignItems: 'center', justifyContent: 'center' },
     header: { color: '#fff', fontSize: 24, fontWeight: '800', paddingTop: 60, paddingBottom: 16 },
     sectionTitle: { color: '#fff', fontSize: 16, fontWeight: '700', marginBottom: 12, marginTop: 8 },
+    pendingBanner: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f0a50020', padding: 12, borderRadius: 8, marginBottom: 12, borderLeftWidth: 3, borderLeftColor: '#f0a500' },
+    pendingBannerText: { color: '#f0a500', fontSize: 14, fontWeight: '600', marginLeft: 8 },
     pendingRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
     pendingInfo: { flex: 1 },
     payBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#e94560', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, marginLeft: 8 },
@@ -275,6 +300,6 @@ const styles = StyleSheet.create({
     uploadBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#e94560', padding: 16, borderRadius: 12 },
     uploadBtnText: { color: '#fff', fontSize: 16, fontWeight: '600', marginLeft: 8 },
     receiptPreview: { width: '100%', height: 200, borderRadius: 12, resizeMode: 'cover', marginTop: 12 },
-    submitBtn: { backgroundColor: '#00b894', padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 16 },
+    submitBtn: { backgroundColor: '#00b894', padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 16, opacity: submitting ? 0.6 : 1 },
     submitBtnText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
 });

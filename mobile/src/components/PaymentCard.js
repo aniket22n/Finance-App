@@ -1,8 +1,8 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, Image, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-export default function PaymentCard({ payment }) {
+export default function PaymentCard({ payment, onPress }) {
     const statusConfig = {
         pending: { color: '#f0a500', icon: 'time', bg: '#f0a50015' },
         paid: { color: '#00b894', icon: 'checkmark-circle', bg: '#00b89415' },
@@ -16,7 +16,7 @@ export default function PaymentCard({ payment }) {
     }) : '—';
 
     return (
-        <View style={styles.card}>
+        <View style={styles.card} onTouchEnd={onPress}>
             <View style={[styles.iconWrap, { backgroundColor: status.bg }]}>
                 <Ionicons name={status.icon} size={24} color={status.color} />
             </View>
@@ -24,6 +24,12 @@ export default function PaymentCard({ payment }) {
                 <Text style={styles.group}>{payment.group?.name || `Month ${payment.month}`}</Text>
                 <Text style={styles.date}>{date}</Text>
                 {payment.upiRef ? <Text style={styles.ref}>Ref: {payment.upiRef}</Text> : null}
+                {payment.receipt ? (
+                    <View style={styles.receiptBadge}>
+                        <Ionicons name="receipt" size={12} color="#6c5ce7" />
+                        <Text style={styles.receiptText}>Receipt uploaded</Text>
+                    </View>
+                ) : null}
             </View>
             <View style={styles.amountWrap}>
                 <Text style={styles.amount}>₹{payment.amount?.toLocaleString()}</Text>
@@ -55,6 +61,8 @@ const styles = StyleSheet.create({
     group: { color: '#fff', fontSize: 15, fontWeight: '600' },
     date: { color: '#8899aa', fontSize: 12, marginTop: 2 },
     ref: { color: '#6c7a89', fontSize: 11, marginTop: 2 },
+    receiptBadge: { flexDirection: 'row', alignItems: 'center', marginTop: 4 },
+    receiptText: { color: '#6c5ce7', fontSize: 11, marginLeft: 4 },
     amountWrap: { alignItems: 'flex-end' },
     amount: { color: '#fff', fontSize: 17, fontWeight: '700' },
     statusLabel: { fontSize: 10, fontWeight: '700', marginTop: 3, letterSpacing: 0.5 },

@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react'
-import { getDashboard, getRevenueAnalytics } from '../services/api'
+import { getDashboard, getRevenueAnalytics, getOverduePayments, getGroupHealth } from '../services/api'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 
 export default function Dashboard() {
     const [data, setData] = useState(null)
     const [revenueData, setRevenueData] = useState([])
+    const [overdueData, setOverdueData] = useState([])
+    const [groupHealth, setGroupHealth] = useState([])
     const [loading, setLoading] = useState(true)
 
     useEffect(() => {
@@ -13,12 +15,16 @@ export default function Dashboard() {
 
     const loadDashboard = async () => {
         try {
-            const [res, revRes] = await Promise.all([
+            const [res, revRes, overdueRes, healthRes] = await Promise.all([
                 getDashboard(),
-                getRevenueAnalytics().catch(() => ({ data: { revenue: [] } }))
+                getRevenueAnalytics().catch(() => ({ data: { revenue: [] } })),
+                getOverduePayments().catch(() => ({ data: { overdue: [] } })),
+                getGroupHealth().catch(() => ({ data: { groups: [] } }))
             ])
             setData(res.data)
             setRevenueData(revRes.data.revenue || [])
+            setOverdueData(overdueRes.data.overdue || [])
+            setGroupHealth(healthRes.data.groups || [])
         } catch (err) {
             console.error('Dashboard error:', err)
         } finally {
@@ -140,6 +146,56 @@ export default function Dashboard() {
                     </div>
                 </div>
             </div>
+
+            {/* Overdue Payments */}
+            {overdueData.length > 0 && (
+                <div className="stat-card" style={{ marginTop: 16, borderColor: 'var(--danger)' }}>
+                    <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 16, color: 'var(--danger)' }}>
+                        🚨 Overdue Payments ({overdueData.length})
+                    </h3>
+                    <table className="data-table">
+                        <thead>
+                            <tr><th>Member</th><th>Group</th><th>Amount</th><th>Pending Since</th></tr>
+                        </thead>
+                        <tbody>
+                            {overdueData.slice(0, 5).map(p => (
+                                <tr key={p._id}>
+                                    <td>{p.user?.name || p.user?.phone || '—'}</td>
+                                    <td>{p.group?.name || '—'}</td>
+                                    <td style={{ fontWeight: 700 }}>₹{p.amount?.toLocaleString()}</td>
+                                    <td>{new Date(p.createdAt).toLocaleDateString()}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+
+            {/* Group Health */}
+            {groupHealth.length > 0 && (
+                <div className="stat-card" style={{ marginTop: 16 }}>
+                    <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 16 }}>🏥 Group Payment Health</h3>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>
+                        {groupHealth.map(g => (
+                            <div key={g._id} style={{ background: 'var(--bg-primary)', padding: 12, borderRadius: 8 }}>
+                                <div style={{ fontWeight: 600, marginBottom: 8 }}>{g.name}</div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                                    <span style={{ color: 'var(--text-secondary)' }}>Paid</span>
+                                    <span style={{ color: 'var(--success)' }}>{g.paid}/{g.totalMembers}</span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                                    <span style={{ color: 'var(--text-secondary)' }}>Pending</span>
+                                    <span style={{ color: 'var(--warning)' }}>{g.pending}</span>
+                                </div>
+                                <div style={{ marginTop: 8, height: 6, background: 'var(--bg-elevated)', borderRadius: 3, overflow: 'hidden' }}>
+                                    <div style={{ height: '100%', width: `${g.percentage}%`, background: g.percentage >= 80 ? 'var(--success)' : g.percentage >= 50 ? 'var(--warning)' : 'var(--danger)', borderRadius: 3 }} />
+                                </div>
+                                <div style={{ textAlign: 'center', fontSize: 12, marginTop: 4, color: 'var(--text-secondary)' }}>{g.percentage}% paid</div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* Recent Payments */}
             {data?.recentPayments?.length > 0 && (

@@ -33,6 +33,9 @@ export default function HomeScreen({ navigation }) {
     const activeGroups = groups.filter(g => g.status === 'active');
     const totalPot = activeGroups.reduce((sum, g) => sum + (g.potAmount || 0), 0);
 
+    // Show pending payments count in stats
+    const pendingCount = activeGroups.length;
+
     return (
         <ScrollView
             style={styles.container}

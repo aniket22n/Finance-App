@@ -33,6 +33,8 @@ export const sendOtp = (phone) => api.post('/auth/send-otp', { phone });
 // Dashboard
 export const getDashboard = () => api.get('/admin/dashboard');
 export const getRevenueAnalytics = () => api.get('/admin/analytics/revenue');
+export const getOverduePayments = () => api.get('/admin/analytics/overdue');
+export const getGroupHealth = () => api.get('/admin/analytics/group-health');
 
 // Groups
 export const getGroups = (params) => api.get('/groups', { params });

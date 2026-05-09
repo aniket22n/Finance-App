@@ -232,4 +232,53 @@ router.get('/analytics/revenue', auth, adminOnly, async (req, res) => {
     }
 });
 
+// GET /api/admin/analytics/overdue — Overdue payments
+router.get('/analytics/overdue', auth, adminOnly, async (req, res) => {
+    try {
+        const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+        const overdue = await Payment.find({
+            status: { $in: ['pending', 'paid'] },
+            createdAt: { $lt: sevenDaysAgo }
+        }).populate('user', 'name phone').populate('group', 'name').sort({ createdAt: 1 });
+
+        res.json({ overdue, count: overdue.length });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/admin/analytics/group-health — Group payment health
+router.get('/analytics/group-health', auth, adminOnly, async (req, res) => {
+    try {
+        const groups = await Group.find({ status: 'active' }).populate('members', 'name phone');
+
+        const health = await Promise.all(groups.map(async (group) => {
+            const currentMonth = group.currentMonth || 1;
+            const payments = await Payment.find({
+                group: group._id,
+                month: currentMonth
+            });
+
+            const totalMembers = group.members.length;
+            const paid = payments.filter(p => p.status === 'verified').length;
+            const pending = payments.filter(p => p.status === 'pending').length;
+            const paidCount = payments.filter(p => p.status === 'paid').length;
+
+            return {
+                _id: group._id,
+                name: group.name,
+                totalMembers,
+                paid: paid + paidCount,
+                pending,
+                percentage: totalMembers > 0 ? Math.round(((paid + paidCount) / totalMembers) * 100) : 0
+            };
+        }));
+
+        res.json({ groups: health });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 module.exports = router;
