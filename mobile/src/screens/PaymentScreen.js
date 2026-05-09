@@ -202,6 +202,7 @@ export default function PaymentScreen() {
                             <TouchableOpacity onPress={() => setModalVisible(false)}>
                                 <Ionicons name="close" size={24} color="#8899aa" />
                             </TouchableOpacity>
+                            )}
                         </View>
 
                         {!paymentMethod ? (
@@ -256,7 +257,7 @@ export default function PaymentScreen() {
                                     </>
                                 )}
 
-                                <TouchableOpacity style={styles.submitBtn} onPress={() => submitPayment(paymentMethod)}>
+                                <TouchableOpacity style={[styles.submitBtn, submitting && { opacity: 0.6 }]} onPress={() => submitPayment(paymentMethod)} disabled={submitting}>
                                     <Text style={styles.submitBtnText}>Submit Payment Details</Text>
                                 </TouchableOpacity>
                                 <TouchableOpacity style={[styles.submitBtn, { backgroundColor: '#334455', marginTop: 10 }]} onPress={() => setPaymentMethod('')}>
@@ -300,6 +301,6 @@ const styles = StyleSheet.create({
     uploadBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#e94560', padding: 16, borderRadius: 12 },
     uploadBtnText: { color: '#fff', fontSize: 16, fontWeight: '600', marginLeft: 8 },
     receiptPreview: { width: '100%', height: 200, borderRadius: 12, resizeMode: 'cover', marginTop: 12 },
-    submitBtn: { backgroundColor: '#00b894', padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 16, opacity: submitting ? 0.6 : 1 },
+    submitBtn: { backgroundColor: '#00b894', padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 16 },
     submitBtnText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
 });
