@@ -7,7 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
 import { sendOtp, verifyOtp } from '../services/api';
 
-export default function LoginScreen() {
+export default function LoginScreen({ navigation }) {
     const { login } = useAuth();
     const [phone, setPhone] = useState('');
     const [otp, setOtp] = useState('');
@@ -130,6 +130,16 @@ export default function LoginScreen() {
             <Text style={styles.footer}>
                 By continuing, you agree to our Terms of Service & Privacy Policy
             </Text>
+
+            {step === 'phone' && (
+                <TouchableOpacity
+                    style={styles.signupRow}
+                    onPress={() => navigation.navigate('SignUp')}
+                >
+                    <Text style={styles.signupText}>New here? </Text>
+                    <Text style={styles.signupLink}>Create account</Text>
+                </TouchableOpacity>
+            )}
         </KeyboardAvoidingView>
     );
 }
@@ -192,4 +202,7 @@ const styles = StyleSheet.create({
     backButton: { marginTop: 16, alignItems: 'center' },
     backText: { color: '#e94560', fontSize: 14 },
     footer: { color: '#556677', fontSize: 11, textAlign: 'center' },
+    signupRow: { flexDirection: 'row', justifyContent: 'center', marginTop: 20 },
+    signupText: { color: '#8899aa', fontSize: 14 },
+    signupLink: { color: '#e94560', fontSize: 14, fontWeight: '700' },
 });

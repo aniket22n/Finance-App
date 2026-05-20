@@ -88,6 +88,21 @@ export const getEmiCycles = (groupId) => api.get(`/emi/group/${groupId}`);
 export const getCurrentCycle = (groupId) => api.get(`/emi/current/${groupId}`);
 export const getEligibleMembers = (groupId) => api.get(`/emi/eligible/${groupId}`);
 
+// ── Admin ──
+export const getAdminDashboard = () => api.get('/admin/dashboard');
+export const getAdminUsers = (params) => api.get('/admin/users', { params });
+export const updateUserRole = (userId, role) => api.put(`/admin/users/${userId}/role`, { role });
+export const sendBulkNotification = (data) => api.post('/admin/notify', data);
+export const triggerReminders = () => api.post('/admin/trigger-reminders');
+export const getGroupHealth = () => api.get('/admin/analytics/group-health');
+
+// ── Payments (admin) ──
+export const getPendingPayments = () => api.get('/payments/pending/all');
+export const verifyPayment = (id, status, notes) => api.put(`/payments/${id}/verify`, { status, notes });
+
+// ── EMI (admin) ──
+export const createEmiCycle = (data) => api.post('/emi/cycle', data);
+
 // ── Config ──
 export const getPaymentConfig = () => api.get('/admin/config');
 

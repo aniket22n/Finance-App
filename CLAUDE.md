@@ -11,8 +11,7 @@ EMI Group is a chit-fund / rotating savings management system for Indian member 
 | Layer | Technology |
 |-------|-----------|
 | Backend | Node.js + Express, MongoDB (Mongoose), JWT auth, node-cron |
-| Admin Portal | React + Vite, Recharts, CSS variables, React Router |
-| Mobile | React Native + Expo (SDK 52), React Navigation 6, Axios |
+| Mobile | React Native + Expo (SDK 52), React Navigation 6, Axios — **single app for both members AND admins** |
 | Push Notifications | Firebase FCM via Expo Push SDK (built) |
 | Email | Gmail SMTP via Nodemailer (to build) |
 | Payments | Razorpay (to integrate) — UPI deeplink currently |
@@ -34,14 +33,9 @@ EMI Group is a chit-fund / rotating savings management system for Indian member 
 │       ├── routes/         # auth, groups, payments, emi, admin
 │       ├── utils/          # emiEngine.js, notifications.js
 │       └── server.js
-├── admin/
-│   └── src/
-│       ├── pages/          # Dashboard, Groups, GroupDetail, Members, Payments, Settings, Login
-│       ├── services/       # api.js (all API calls go through here only)
-│       └── components/
 ├── mobile/
 │   └── src/
-│       ├── screens/        # LoginScreen, HomeScreen, GroupListScreen, GroupDetailScreen, PaymentScreen, ProfileScreen
+│       ├── screens/        # LoginScreen, SignUpScreen, HomeScreen, GroupListScreen, GroupDetailScreen, PaymentScreen, ProfileScreen, AdminDashboardScreen
 │       ├── components/     # Avatar, GroupCard, MemberCard, PaymentCard, ProgressRing
 │       ├── services/       # api.js (Axios + JWT interceptors)
 │       └── context/        # AuthContext

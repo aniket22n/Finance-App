@@ -7,16 +7,21 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { useAuth } from '../context/AuthContext';
 import LoginScreen from '../screens/LoginScreen';
+import SignUpScreen from '../screens/SignUpScreen';
 import HomeScreen from '../screens/HomeScreen';
 import GroupListScreen from '../screens/GroupListScreen';
 import GroupDetailScreen from '../screens/GroupDetailScreen';
 import PaymentScreen from '../screens/PaymentScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+import AdminDashboardScreen from '../screens/AdminDashboardScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
 function MainTabs() {
+    const { user } = useAuth();
+    const isAdmin = user?.role === 'admin';
+
     return (
         <Tab.Navigator
             screenOptions={({ route }) => ({
@@ -32,11 +37,12 @@ function MainTabs() {
                 tabBarActiveTintColor: '#e94560',
                 tabBarInactiveTintColor: '#556677',
                 tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
-                tabBarIcon: ({ focused, color, size }) => {
+                tabBarIcon: ({ focused, color }) => {
                     let iconName;
                     if (route.name === 'Home') iconName = focused ? 'home' : 'home-outline';
                     else if (route.name === 'Groups') iconName = focused ? 'people' : 'people-outline';
                     else if (route.name === 'Payments') iconName = focused ? 'card' : 'card-outline';
+                    else if (route.name === 'Admin') iconName = focused ? 'shield' : 'shield-outline';
                     else if (route.name === 'Profile') iconName = focused ? 'person' : 'person-outline';
                     return <Ionicons name={iconName} size={22} color={color} />;
                 },
@@ -45,6 +51,13 @@ function MainTabs() {
             <Tab.Screen name="Home" component={HomeScreen} />
             <Tab.Screen name="Groups" component={GroupListScreen} />
             <Tab.Screen name="Payments" component={PaymentScreen} />
+            {isAdmin && (
+                <Tab.Screen
+                    name="Admin"
+                    component={AdminDashboardScreen}
+                    options={{ tabBarLabel: 'Admin' }}
+                />
+            )}
             <Tab.Screen name="Profile" component={ProfileScreen} />
         </Tab.Navigator>
     );
@@ -86,7 +99,10 @@ export default function AppNavigator() {
                         />
                     </>
                 ) : (
-                    <Stack.Screen name="Login" component={LoginScreen} />
+                    <>
+                        <Stack.Screen name="Login" component={LoginScreen} />
+                        <Stack.Screen name="SignUp" component={SignUpScreen} />
+                    </>
                 )}
             </Stack.Navigator>
         </NavigationContainer>
