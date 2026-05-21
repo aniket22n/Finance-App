@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { getMe } from '../services/api';
 
@@ -6,8 +7,7 @@ const AuthContext = createContext({});
 
 export const useAuth = () => useContext(AuthContext);
 
-// Web platform check
-const isWebPlatform = typeof window !== 'undefined';
+const isWebPlatform = Platform.OS === 'web';
 
 // Storage helper that works on both mobile and web
 const storage = {
@@ -64,10 +64,10 @@ export function AuthProvider({ children }) {
         setUser(userData);
     };
 
-    const logout = async () => {
-        await storage.deleteItem('authToken');
+    const logout = () => {
         setToken(null);
         setUser(null);
+        storage.deleteItem('authToken').catch(() => {});
     };
 
     const updateUser = (userData) => {

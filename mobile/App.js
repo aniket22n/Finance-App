@@ -1,11 +1,27 @@
-import React, { useEffect } from 'react';
+import React, { useCallback, useEffect } from 'react';
+import { View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { registerRootComponent } from 'expo';
+import * as SplashScreen from 'expo-splash-screen';
 import * as Notifications from 'expo-notifications';
+import {
+    useFonts,
+    Poppins_400Regular,
+    Poppins_500Medium,
+    Poppins_600SemiBold,
+    Poppins_700Bold,
+} from '@expo-google-fonts/poppins';
 import { AuthProvider } from './src/context/AuthContext';
+import { ThemeProvider, useTheme } from './src/context/ThemeContext';
 import AppNavigator from './src/navigation/AppNavigator';
 
-// Configure notification handler
+function ThemedStatusBar() {
+    const { isDark } = useTheme();
+    return <StatusBar style={isDark ? 'light' : 'dark'} />;
+}
+
+SplashScreen.preventAutoHideAsync();
+
 Notifications.setNotificationHandler({
     handleNotification: async () => ({
         shouldShowAlert: true,
@@ -15,38 +31,49 @@ Notifications.setNotificationHandler({
 });
 
 function App() {
+    const [fontsLoaded, fontError] = useFonts({
+        Poppins_400Regular,
+        Poppins_500Medium,
+        Poppins_600SemiBold,
+        Poppins_700Bold,
+    });
+
+    const onLayoutRootView = useCallback(() => {
+        if (fontsLoaded || fontError) {
+            SplashScreen.hide();
+        }
+    }, [fontsLoaded, fontError]);
+
     useEffect(() => {
         registerForPushNotifications();
     }, []);
 
     const registerForPushNotifications = async () => {
         try {
-            const { status: existingStatus } = await Notifications.getPermissionsAsync();
-            let finalStatus = existingStatus;
-
-            if (existingStatus !== 'granted') {
+            const { status: existing } = await Notifications.getPermissionsAsync();
+            let finalStatus = existing;
+            if (existing !== 'granted') {
                 const { status } = await Notifications.requestPermissionsAsync();
                 finalStatus = status;
             }
-
-            if (finalStatus !== 'granted') {
-                console.log('Push notification permission not granted');
-                return;
-            }
-
-            const token = (await Notifications.getExpoPushTokenAsync()).data;
-            console.log('Expo Push Token:', token);
-            // Token will be sent to backend when user updates profile
+            if (finalStatus !== 'granted') return;
+            await Notifications.getExpoPushTokenAsync();
         } catch (err) {
-            console.log('Push notification setup error:', err);
+            // Permission not granted or device doesn't support push
         }
     };
 
+    if (!fontsLoaded && !fontError) return null;
+
     return (
-        <AuthProvider>
-            <StatusBar style="light" />
-            <AppNavigator />
-        </AuthProvider>
+        <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
+            <ThemeProvider>
+                <AuthProvider>
+                    <ThemedStatusBar />
+                    <AppNavigator />
+                </AuthProvider>
+            </ThemeProvider>
+        </View>
     );
 }
 

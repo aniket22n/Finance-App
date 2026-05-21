@@ -1,8 +1,13 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
+import { useTheme } from '../context/ThemeContext';
+import { F } from '../theme';
 
 export default function ProgressRing({ progress = 0, size = 100, strokeWidth = 8, label }) {
+    const { colors } = useTheme();
+    const styles = makeStyles(colors);
+
     const radius = (size - strokeWidth) / 2;
     const circumference = 2 * Math.PI * radius;
     const strokeDashoffset = circumference - (progress / 100) * circumference;
@@ -15,7 +20,7 @@ export default function ProgressRing({ progress = 0, size = 100, strokeWidth = 8
                     cx={center}
                     cy={center}
                     r={radius}
-                    stroke="#16213e"
+                    stroke={colors.backgroundTertiary}
                     strokeWidth={strokeWidth}
                     fill="none"
                 />
@@ -23,7 +28,7 @@ export default function ProgressRing({ progress = 0, size = 100, strokeWidth = 8
                     cx={center}
                     cy={center}
                     r={radius}
-                    stroke="#e94560"
+                    stroke={colors.primary}
                     strokeWidth={strokeWidth}
                     fill="none"
                     strokeDasharray={circumference}
@@ -40,14 +45,16 @@ export default function ProgressRing({ progress = 0, size = 100, strokeWidth = 8
     );
 }
 
-const styles = StyleSheet.create({
-    container: { position: 'relative', alignItems: 'center' },
-    labelContainer: {
-        position: 'absolute',
-        top: 0,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    percentage: { color: '#fff', fontSize: 20, fontWeight: '700' },
-    label: { color: '#8899aa', fontSize: 11, marginTop: 2 },
-});
+function makeStyles(colors) {
+    return StyleSheet.create({
+        container: { position: 'relative', alignItems: 'center' },
+        labelContainer: {
+            position: 'absolute',
+            top: 0,
+            alignItems: 'center',
+            justifyContent: 'center',
+        },
+        percentage: { fontSize: 18, fontFamily: F.bold, color: colors.text },
+        label: { fontSize: 11, fontFamily: F.regular, color: colors.textSecondary, marginTop: 2 },
+    });
+}

@@ -112,6 +112,17 @@ router.get('/users', auth, adminOnly, async (req, res) => {
     }
 });
 
+// DELETE /api/admin/users/:id — Delete user account
+router.delete('/users/:id', auth, adminOnly, async (req, res) => {
+    try {
+        const user = await User.findByIdAndDelete(req.params.id);
+        if (!user) return res.status(404).json({ error: 'User not found' });
+        res.json({ message: 'User deleted successfully' });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // PUT /api/admin/users/:id/role — Update user role
 router.put('/users/:id/role', auth, adminOnly, async (req, res) => {
     try {

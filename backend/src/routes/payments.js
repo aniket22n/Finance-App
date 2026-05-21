@@ -120,6 +120,25 @@ router.get('/user/:userId', auth, async (req, res) => {
     }
 });
 
+// GET /api/payments/admin/list — All payments with optional status filter (admin)
+router.get('/admin/list', auth, adminOnly, async (req, res) => {
+    try {
+        const { status, limit = 100 } = req.query;
+        const filter = {};
+        if (status) filter.status = status;
+
+        const payments = await Payment.find(filter)
+            .populate('user', 'name phone avatar')
+            .populate('group', 'name')
+            .sort({ createdAt: -1 })
+            .limit(parseInt(limit));
+
+        res.json({ payments });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // GET /api/payments/pending — All pending payments (admin)
 router.get('/pending/all', auth, adminOnly, async (req, res) => {
     try {

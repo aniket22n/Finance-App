@@ -6,6 +6,8 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
+import { F } from '../theme';
 import LoginScreen from '../screens/LoginScreen';
 import SignUpScreen from '../screens/SignUpScreen';
 import HomeScreen from '../screens/HomeScreen';
@@ -14,12 +16,16 @@ import GroupDetailScreen from '../screens/GroupDetailScreen';
 import PaymentScreen from '../screens/PaymentScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import AdminDashboardScreen from '../screens/AdminDashboardScreen';
+import AdminGroupsScreen from '../screens/AdminGroupsScreen';
+import AdminPaymentsScreen from '../screens/AdminPaymentsScreen';
+import AdminControlsScreen from '../screens/AdminControlsScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
 function MainTabs() {
     const { user } = useAuth();
+    const { colors } = useTheme();
     const isAdmin = user?.role === 'admin';
 
     return (
@@ -27,16 +33,16 @@ function MainTabs() {
             screenOptions={({ route }) => ({
                 headerShown: false,
                 tabBarStyle: {
-                    backgroundColor: '#0f3460',
-                    borderTopColor: '#1a1a4e',
+                    backgroundColor: colors.background,
+                    borderTopColor: colors.border,
                     borderTopWidth: 1,
-                    height: 60,
-                    paddingBottom: 8,
-                    paddingTop: 6,
+                    height: 72,
+                    paddingBottom: 14,
+                    paddingTop: 8,
                 },
-                tabBarActiveTintColor: '#e94560',
-                tabBarInactiveTintColor: '#556677',
-                tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
+                tabBarActiveTintColor: colors.primary,
+                tabBarInactiveTintColor: colors.textSecondary,
+                tabBarLabelStyle: { fontSize: 11 },
                 tabBarIcon: ({ focused, color }) => {
                     let iconName;
                     if (route.name === 'Home') iconName = focused ? 'home' : 'home-outline';
@@ -44,19 +50,15 @@ function MainTabs() {
                     else if (route.name === 'Payments') iconName = focused ? 'card' : 'card-outline';
                     else if (route.name === 'Admin') iconName = focused ? 'shield' : 'shield-outline';
                     else if (route.name === 'Profile') iconName = focused ? 'person' : 'person-outline';
-                    return <Ionicons name={iconName} size={22} color={color} />;
+                    return <Ionicons name={iconName} size={24} color={color} />;
                 },
             })}
         >
-            <Tab.Screen name="Home" component={HomeScreen} />
-            <Tab.Screen name="Groups" component={GroupListScreen} />
-            <Tab.Screen name="Payments" component={PaymentScreen} />
+            <Tab.Screen name="Home" component={isAdmin ? AdminDashboardScreen : HomeScreen} />
+            <Tab.Screen name="Groups" component={isAdmin ? AdminGroupsScreen : GroupListScreen} />
+            <Tab.Screen name="Payments" component={isAdmin ? AdminPaymentsScreen : PaymentScreen} />
             {isAdmin && (
-                <Tab.Screen
-                    name="Admin"
-                    component={AdminDashboardScreen}
-                    options={{ tabBarLabel: 'Admin' }}
-                />
+                <Tab.Screen name="Admin" component={AdminControlsScreen} />
             )}
             <Tab.Screen name="Profile" component={ProfileScreen} />
         </Tab.Navigator>
@@ -65,11 +67,12 @@ function MainTabs() {
 
 export default function AppNavigator() {
     const { user, loading } = useAuth();
+    const { colors } = useTheme();
 
     if (loading) {
         return (
-            <View style={{ flex: 1, backgroundColor: '#1a1a2e', justifyContent: 'center', alignItems: 'center' }}>
-                <ActivityIndicator size="large" color="#e94560" />
+            <View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }}>
+                <ActivityIndicator size="large" color={colors.primary} />
             </View>
         );
     }
@@ -79,7 +82,7 @@ export default function AppNavigator() {
             <Stack.Navigator
                 screenOptions={{
                     headerShown: false,
-                    contentStyle: { backgroundColor: '#1a1a2e' },
+                    contentStyle: { backgroundColor: colors.background },
                     animation: 'slide_from_right',
                 }}
             >
@@ -92,9 +95,11 @@ export default function AppNavigator() {
                             options={{
                                 headerShown: true,
                                 headerTitle: 'Group Details',
-                                headerStyle: { backgroundColor: '#1a1a2e' },
-                                headerTintColor: '#fff',
+                                headerStyle: { backgroundColor: colors.background },
+                                headerTintColor: colors.text,
                                 headerShadowVisible: false,
+                                headerTitleStyle: { fontFamily: F.semibold, fontSize: 16 },
+                                headerBackTitle: '',
                             }}
                         />
                     </>

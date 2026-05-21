@@ -45,6 +45,21 @@ setInterval(() => {
     }
 }, 10 * 60 * 1000);
 
+// GET /api/auth/check-phone?phone=XXXXXXXXXX
+// Returns { exists: true } only when a user with that phone has completed signup (has a name)
+router.get('/check-phone', async (req, res) => {
+    try {
+        const { phone } = req.query;
+        if (!phone || !/^\d{10}$/.test(phone)) {
+            return res.status(400).json({ error: 'Valid 10-digit phone number required' });
+        }
+        const user = await User.findOne({ phone, name: { $exists: true, $ne: '' } }).lean();
+        res.json({ exists: !!user });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // POST /api/auth/send-otp
 router.post('/send-otp', sendOtpValidations, validate, async (req, res) => {
     try {
