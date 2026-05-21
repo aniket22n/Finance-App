@@ -1,12 +1,16 @@
-import React, { useState, useCallback } from 'react';
-import {
-    View, Text, FlatList, RefreshControl, StyleSheet, ActivityIndicator,
-} from 'react-native';
+import React, { useMemo, useState, useCallback } from 'react';
+import { View, Text, FlatList, RefreshControl, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
+import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import { getGroups } from '../services/api';
 import GroupCard from '../components/GroupCard';
+import { F } from '../theme';
 
 export default function GroupListScreen({ navigation }) {
+    const { user } = useAuth();
+    const { colors } = useTheme();
     const [groups, setGroups] = useState([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -30,20 +34,27 @@ export default function GroupListScreen({ navigation }) {
         setRefreshing(false);
     };
 
+    const styles = useMemo(() => makeStyles(colors), [colors]);
+
     if (loading) {
         return (
             <View style={styles.center}>
-                <ActivityIndicator size="large" color="#e94560" />
+                <ActivityIndicator size="large" color={colors.primary} />
             </View>
         );
     }
 
     return (
         <View style={styles.container}>
-            <Text style={styles.header}>My Groups</Text>
+            {/* Header */}
+            <View style={styles.header}>
+                <Text style={styles.title}>My Groups</Text>
+                <Text style={styles.count}>{groups.length} group{groups.length !== 1 ? 's' : ''}</Text>
+            </View>
+
             <FlatList
                 data={groups}
-                keyExtractor={(item) => item._id}
+                keyExtractor={item => item._id}
                 renderItem={({ item }) => (
                     <GroupCard
                         group={item}
@@ -51,13 +62,16 @@ export default function GroupListScreen({ navigation }) {
                     />
                 )}
                 contentContainerStyle={styles.list}
-                refreshControl={
-                    <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#e94560" />
-                }
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
                 ListEmptyComponent={
-                    <View style={styles.empty}>
-                        <Text style={styles.emptyText}>No groups yet</Text>
-                        <Text style={styles.emptySubtext}>You'll see groups here once an admin adds you</Text>
+                    <View style={styles.emptyBox}>
+                        <Ionicons name="people-outline" size={48} color={colors.textSecondary} />
+                        <Text style={styles.emptyTitle}>No Groups Yet</Text>
+                        <Text style={styles.emptyBody}>
+                            {user?.role === 'admin'
+                                ? 'Create a group from the Admin panel.'
+                                : "You'll be added to a group by your admin."}
+                        </Text>
                     </View>
                 }
             />
@@ -65,19 +79,35 @@ export default function GroupListScreen({ navigation }) {
     );
 }
 
-const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#1a1a2e' },
-    center: { flex: 1, backgroundColor: '#1a1a2e', alignItems: 'center', justifyContent: 'center' },
-    header: {
-        color: '#fff',
-        fontSize: 24,
-        fontWeight: '800',
-        paddingHorizontal: 20,
-        paddingTop: 60,
-        paddingBottom: 16,
-    },
-    list: { paddingHorizontal: 20, paddingBottom: 40 },
-    empty: { alignItems: 'center', paddingTop: 60 },
-    emptyText: { color: '#fff', fontSize: 18, fontWeight: '600' },
-    emptySubtext: { color: '#8899aa', fontSize: 14, marginTop: 8 },
-});
+function makeStyles(colors) {
+    return StyleSheet.create({
+        container: { flex: 1, backgroundColor: colors.backgroundSecondary },
+        center:    { flex: 1, backgroundColor: colors.backgroundSecondary, alignItems: 'center', justifyContent: 'center' },
+        header: {
+            backgroundColor: colors.background,
+            paddingHorizontal: 16,
+            paddingTop: 56,
+            paddingBottom: 12,
+            borderBottomWidth: 1,
+            borderBottomColor: colors.border,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+        },
+        title:    { fontSize: 20, fontFamily: F.bold, color: colors.text },
+        count:    { fontSize: 14, fontFamily: F.regular, color: colors.textSecondary, marginBottom: 2 },
+        list:     { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 90 },
+        emptyBox: {
+            borderRadius: 12,
+            borderWidth: 2,
+            borderStyle: 'dashed',
+            borderColor: colors.border,
+            backgroundColor: colors.background,
+            padding: 32,
+            alignItems: 'center',
+            marginTop: 20,
+        },
+        emptyTitle: { fontSize: 16, fontFamily: F.medium, color: colors.text, marginTop: 12 },
+        emptyBody:  { fontSize: 14, fontFamily: F.regular, color: colors.textSecondary, textAlign: 'center', marginTop: 6, lineHeight: 20 },
+    });
+}

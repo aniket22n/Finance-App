@@ -3,7 +3,67 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const { auth } = require('../middleware/auth');
 const config = require('../config/appConfig');
-const { validate, sendOtpValidations, verifyOtpValidations } = require('../middleware/validators');
+const {
+    validate,
+    sendOtpValidations,
+    verifyOtpValidations,
+    loginPasswordValidations,
+    signupValidations,
+    resetPasswordValidations,
+    checkUserTypeValidations,
+    loginWithPinValidations,
+    signupWithPinValidations,
+    setPinValidations,
+    resetPinValidations,
+} = require('../middleware/validators');
+
+const issueToken = (user) => jwt.sign(
+    { userId: user._id, role: user.role },
+    config.jwtSecret,
+    { expiresIn: config.jwtExpiry }
+);
+
+const userResponse = (user) => ({
+    _id: user._id,
+    name: user.name,
+    phone: user.phone,
+    email: user.email,
+    avatar: user.avatar,
+    role: user.role,
+});
+
+const sendOtpToUser = async (user, phone) => {
+    const otp = config.devOtp || Math.floor(100000 + Math.random() * 900000).toString();
+    user.otp = otp;
+    user.otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    await user.save();
+
+    if (process.env.FAST2SMS_API_KEY) {
+        const axios = require('axios');
+        try {
+            await axios({
+                method: 'POST',
+                url: 'https://www.fast2sms.com/dev/bulkV2',
+                headers: {
+                    'authorization': process.env.FAST2SMS_API_KEY,
+                    'Content-Type': 'application/json',
+                },
+                data: { variables_values: otp, route: 'otp', numbers: phone },
+            });
+            console.log(`✉️ SMS OTP sent to ${phone}`);
+        } catch (err) {
+            console.error(`❌ Failed to send SMS to ${phone}:`, err.response?.data || err.message);
+        }
+    } else {
+        console.log(`📱 (DEV) OTP for ${phone}: ${otp}`);
+    }
+};
+
+const verifyOtpMatch = (user, otp) => {
+    const validOtp = user.otp === otp && user.otpExpiresAt > new Date();
+    const devMode = config.devOtp && otp === config.devOtp;
+    return validOtp || devMode;
+};
 
 const router = express.Router();
 
@@ -45,6 +105,21 @@ setInterval(() => {
     }
 }, 10 * 60 * 1000);
 
+// GET /api/auth/check-phone?phone=XXXXXXXXXX
+// Returns { exists: true } only when a user with that phone has completed signup (has a name)
+router.get('/check-phone', async (req, res) => {
+    try {
+        const { phone } = req.query;
+        if (!phone || !/^\d{10}$/.test(phone)) {
+            return res.status(400).json({ error: 'Valid 10-digit phone number required' });
+        }
+        const user = await User.findOne({ phone, name: { $exists: true, $ne: '' } }).lean();
+        res.json({ exists: !!user });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // POST /api/auth/send-otp
 router.post('/send-otp', sendOtpValidations, validate, async (req, res) => {
     try {
@@ -66,7 +141,7 @@ router.post('/send-otp', sendOtpValidations, validate, async (req, res) => {
         }
 
         // Generate OTP (use DEV_OTP in development)
-        const otp = config.devOtp || Math.floor(1000 + Math.random() * 9000).toString();
+        const otp = config.devOtp || Math.floor(100000 + Math.random() * 900000).toString();
         user.otp = otp;
         user.otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
         await user.save();
@@ -143,6 +218,204 @@ router.post('/verify-otp', verifyOtpValidations, validate, async (req, res) => {
                 role: user.role,
             },
         });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/auth/login (phone + password)
+router.post('/login', loginPasswordValidations, validate, async (req, res) => {
+    try {
+        const { phone, password } = req.body;
+        const user = await User.findOne({ phone });
+        if (!user || !user.hasPassword()) {
+            return res.status(401).json({ error: 'Invalid phone or password' });
+        }
+        const ok = await user.comparePassword(password);
+        if (!ok) return res.status(401).json({ error: 'Invalid phone or password' });
+
+        res.json({ token: issueToken(user), user: userResponse(user) });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/auth/signup (phone + otp + password + name)
+router.post('/signup', signupValidations, validate, async (req, res) => {
+    try {
+        const { phone, otp, password, name } = req.body;
+        const user = await User.findOne({ phone });
+        if (!user) return res.status(404).json({ error: 'No OTP request found for this phone' });
+
+        if (!verifyOtpMatch(user, otp)) {
+            return res.status(401).json({ error: 'Invalid or expired OTP' });
+        }
+
+        user.name = name.trim();
+        await user.setPassword(password);
+        user.otp = '';
+        user.otpExpiresAt = undefined;
+        await user.save();
+
+        res.json({ token: issueToken(user), user: userResponse(user) });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/auth/forgot-password (phone → send OTP)
+router.post('/forgot-password', sendOtpValidations, validate, async (req, res) => {
+    try {
+        const { phone } = req.body;
+
+        const rateCheck = checkRateLimit(phone);
+        if (!rateCheck.allowed) {
+            return res.status(429).json({
+                error: 'Too many OTP requests',
+                message: `Maximum ${RATE_LIMIT_MAX} OTPs per hour. Try again in ${rateCheck.retryAfter} seconds.`,
+            });
+        }
+
+        const user = await User.findOne({ phone });
+        if (!user || !user.hasPassword()) {
+            // Don't leak whether account exists — respond OK either way
+            return res.json({ message: 'If an account exists, an OTP has been sent', phone });
+        }
+
+        await sendOtpToUser(user, phone);
+        res.json({ message: 'OTP sent successfully', phone });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/auth/reset-password (phone + otp + newPassword)
+router.post('/reset-password', resetPasswordValidations, validate, async (req, res) => {
+    try {
+        const { phone, otp, newPassword } = req.body;
+        const user = await User.findOne({ phone });
+        if (!user) return res.status(404).json({ error: 'User not found' });
+
+        if (!verifyOtpMatch(user, otp)) {
+            return res.status(401).json({ error: 'Invalid or expired OTP' });
+        }
+
+        await user.setPassword(newPassword);
+        user.otp = '';
+        user.otpExpiresAt = undefined;
+        await user.save();
+
+        res.json({ message: 'Password updated successfully' });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/auth/check-user-type — returns whether a phone belongs to an admin
+router.post('/check-user-type', checkUserTypeValidations, validate, async (req, res) => {
+    try {
+        const { phone } = req.body;
+        const user = await User.findOne({ phone }).lean();
+        res.json({ isAdmin: user?.role === 'admin' });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/auth/set-pin — store PIN for a user (called after OTP verification)
+router.post('/set-pin', async (req, res) => {
+    try {
+        const { phone, pin } = req.body;
+        if (!phone || !pin) {
+            return res.status(400).json({ error: 'Phone and PIN required' });
+        }
+        const pinStr = String(pin);
+        if (pinStr.length !== 4 || isNaN(pinStr)) {
+            return res.status(400).json({ error: 'PIN must be exactly 4 digits' });
+        }
+        const user = await User.findOne({ phone });
+        if (!user) return res.status(404).json({ error: 'User not found' });
+        user.pin = pinStr;
+        await user.save();
+        res.json({ success: true, message: 'PIN set successfully' });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/auth/verify-pin — verify PIN and issue JWT
+router.post('/verify-pin', async (req, res) => {
+    try {
+        const { phone, pin } = req.body;
+        if (!phone || !pin) {
+            return res.status(400).json({ error: 'Phone and PIN required' });
+        }
+        const pinStr = String(pin);
+        const user = await User.findOne({ phone });
+        if (!user) return res.status(404).json({ error: 'User not found' });
+        if (!user.pin) {
+            return res.status(400).json({ error: 'PIN not set. Please log in with OTP.' });
+        }
+        if (user.pin !== pinStr) {
+            return res.status(401).json({ error: 'Incorrect PIN' });
+        }
+        res.json({ token: issueToken(user), user: userResponse(user) });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/auth/signup-with-pin — create account with PIN (after OTP verification)
+router.post('/signup-with-pin', signupWithPinValidations, validate, async (req, res) => {
+    try {
+        const { phone, otp, pin, name } = req.body;
+        const pinStr = String(pin);
+        let user = await User.findOne({ phone });
+        if (!user) return res.status(404).json({ error: 'No OTP request found for this phone' });
+        if (!verifyOtpMatch(user, otp)) {
+            return res.status(401).json({ error: 'Invalid or expired OTP' });
+        }
+        user.name = name.trim();
+        user.pin = pinStr;
+        user.otp = '';
+        user.otpExpiresAt = undefined;
+        await user.save();
+        res.json({ token: issueToken(user), user: userResponse(user) });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/auth/update-pin — update PIN (after forgot PIN OTP flow)
+router.post('/update-pin', async (req, res) => {
+    try {
+        const { phone, newPin } = req.body;
+        if (!phone || !newPin) {
+            return res.status(400).json({ error: 'Phone and new PIN required' });
+        }
+        const pinStr = String(newPin);
+        if (pinStr.length !== 4 || isNaN(pinStr)) {
+            return res.status(400).json({ error: 'PIN must be exactly 4 digits' });
+        }
+        const user = await User.findOneAndUpdate(
+            { phone },
+            { pin: pinStr },
+            { new: true }
+        );
+        if (!user) return res.status(404).json({ error: 'User not found' });
+        res.json({ success: true, message: 'PIN updated successfully' });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/auth/has-pin — check if user has a PIN set
+router.post('/has-pin', async (req, res) => {
+    try {
+        const { phone } = req.body;
+        if (!phone) return res.status(400).json({ error: 'Phone required' });
+        const user = await User.findOne({ phone }).lean();
+        res.json({ hasPIN: !!(user && user.pin) });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }

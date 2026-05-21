@@ -1,30 +1,41 @@
-import React, { useState, useCallback } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import {
     View, Text, ScrollView, TouchableOpacity, Alert, Linking,
-    StyleSheet, RefreshControl, ActivityIndicator, Modal, TextInput, Image
+    StyleSheet, RefreshControl, ActivityIndicator, Modal, TextInput, Image,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import { getUserPayments, getGroups, initiatePayment, getPaymentConfig } from '../services/api';
 import PaymentCard from '../components/PaymentCard';
+import { F } from '../theme';
+import { useInputFocus, focusBorder, webOutlineReset } from '../hooks/useInputFocus';
+
+const buildMethods = (colors) => [
+    { id: 'upi',   icon: 'qr-code',   color: colors.success, label: 'UPI',            sub: 'GPay, PhonePe, Paytm — 0% fee' },
+    { id: 'bank',  icon: 'business',  color: colors.info,    label: 'Bank Transfer',  sub: 'NEFT / IMPS / RTGS' },
+    { id: 'cash',  icon: 'cash',      color: colors.warning, label: 'Cash',           sub: 'Admin verifies in person' },
+    { id: 'other', icon: 'image',     color: colors.primary, label: 'Upload Receipt', sub: 'Screenshot / photo proof' },
+];
 
 export default function PaymentScreen() {
     const { user } = useAuth();
+    const { colors } = useTheme();
     const [payments, setPayments] = useState([]);
     const [groups, setGroups] = useState([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
-    const [upiVpa, setUpiVpa] = useState('admin@upi'); // Default fallback
+    const [upiVpa, setUpiVpa] = useState('admin@upi');
 
-    // Modal state
     const [modalVisible, setModalVisible] = useState(false);
     const [selectedPending, setSelectedPending] = useState(null);
     const [paymentMethod, setPaymentMethod] = useState('');
     const [utrNumber, setUtrNumber] = useState('');
     const [receiptBase64, setReceiptBase64] = useState(null);
     const [submitting, setSubmitting] = useState(false);
+    const [utrFocused, utrFocusProps] = useInputFocus();
 
     const loadData = async () => {
         try {
@@ -35,11 +46,9 @@ export default function PaymentScreen() {
             ]);
             setPayments(paymentsRes.data.payments || []);
             setGroups(groupsRes.data.groups || []);
-            if (configRes.data.upiVpa) {
-                setUpiVpa(configRes.data.upiVpa);
-            }
+            if (configRes.data.upiVpa) setUpiVpa(configRes.data.upiVpa);
         } catch (err) {
-            console.log('Error:', err.message);
+            console.log('Payment load error:', err.message);
         } finally {
             setLoading(false);
         }
@@ -74,20 +83,12 @@ export default function PaymentScreen() {
                 receipt: receiptBase64,
             });
             setModalVisible(false);
-            // Clear form
             setPaymentMethod('');
             setUtrNumber('');
             setReceiptBase64(null);
-            Alert.alert(
-                '✅ Payment Submitted',
-                'Your payment is pending verification. You will be notified once verified.',
-                [{ text: 'OK', onPress: () => loadData() }]
-            );
+            Alert.alert('Payment Submitted', 'Your payment is pending verification.', [{ text: 'OK', onPress: loadData }]);
         } catch (err) {
-            Alert.alert(
-                '❌ Payment Failed',
-                err.response?.data?.error || 'Something went wrong. Please try again.'
-            );
+            Alert.alert('Payment Failed', err.response?.data?.error || 'Something went wrong. Try again.');
         } finally {
             setSubmitting(false);
         }
@@ -96,25 +97,20 @@ export default function PaymentScreen() {
     const handleUPIPay = () => {
         const { group, amount, month } = selectedPending;
         const upiUrl = `upi://pay?pa=${upiVpa}&pn=EMI+Group&am=${amount}&tn=EMI+Month+${month}+${group.name}&cu=INR`;
-        
         Alert.alert(
-            'Pay via UPI',
-            `Pay ₹${amount.toLocaleString()} for ${group.name} (Month ${month})`,
+            `Pay ₹${amount.toLocaleString()}`,
+            `${group.name} · Month ${month}`,
             [
                 { text: 'Cancel', style: 'cancel' },
                 {
                     text: 'Open UPI App',
                     onPress: async () => {
-                        try {
-                            const supported = await Linking.canOpenURL(upiUrl);
-                            if (supported) {
-                                await Linking.openURL(upiUrl);
-                                await submitPayment('upi');
-                            } else {
-                                Alert.alert('Error', 'No UPI app found. Please install Google Pay, PhonePe, or Paytm.');
-                            }
-                        } catch (err) {
-                            Alert.alert('Error', 'Failed to open UPI app');
+                        const supported = await Linking.canOpenURL(upiUrl).catch(() => false);
+                        if (supported) {
+                            await Linking.openURL(upiUrl);
+                            await submitPayment('upi');
+                        } else {
+                            Alert.alert('No UPI App', 'Install Google Pay, PhonePe, or Paytm.');
                         }
                     },
                 },
@@ -123,55 +119,63 @@ export default function PaymentScreen() {
     };
 
     const pickImage = async () => {
-        let result = await ImagePicker.launchImageLibraryAsync({
+        const result = await ImagePicker.launchImageLibraryAsync({
             mediaTypes: ImagePicker.MediaTypeOptions.Images,
             allowsEditing: true,
             quality: 0.5,
             base64: true,
         });
-
         if (!result.canceled && result.assets[0].base64) {
             setReceiptBase64(`data:image/jpeg;base64,${result.assets[0].base64}`);
         }
     };
 
+    const styles = useMemo(() => makeStyles(colors), [colors]);
+
     if (loading) {
-        return (
-            <View style={styles.center}>
-                <ActivityIndicator size="large" color="#e94560" />
-            </View>
-        );
+        return <View style={styles.center}><ActivityIndicator size="large" color={colors.primary} /></View>;
     }
 
     const pendingPayments = payments.filter(p => p.status === 'pending');
     const completedPayments = payments.filter(p => p.status !== 'pending');
 
     return (
-        <ScrollView style={styles.container} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#e94560" />}>
-            <Text style={styles.header}>Payments</Text>
+        <ScrollView
+            style={styles.container}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+        >
+            <View style={styles.header}>
+                <Text style={styles.headerTitle}>Payments</Text>
+            </View>
+
+            {pendingPayments.length > 0 && (
+                <View style={styles.pendingBanner}>
+                    <Ionicons name="alert-circle" size={18} color={colors.warning} />
+                    <Text style={styles.pendingBannerText}>
+                        {pendingPayments.length} pending payment{pendingPayments.length > 1 ? 's' : ''} due
+                    </Text>
+                </View>
+            )}
 
             {pendingPayments.length > 0 && (
                 <>
-                    {pendingPayments.length > 0 && (
-                        <View style={styles.pendingBanner}>
-                            <Ionicons name="alert-circle" size={18} color="#f0a500" />
-                            <Text style={styles.pendingBannerText}>
-                                You have {pendingPayments.length} pending payment{pendingPayments.length > 1 ? 's' : ''}
-                            </Text>
-                        </View>
-                    )}
-                    <Text style={styles.sectionTitle}>Pending ({pendingPayments.length})</Text>
-                    {pendingPayments.map((payment) => {
+                    <Text style={styles.sectionTitle}>Due Payments</Text>
+                    {pendingPayments.map(payment => {
                         const group = groups.find(g => g._id === (payment.group?._id || payment.group));
                         return (
-                            <View key={payment._id} style={styles.pendingRow}>
-                                <View style={styles.pendingInfo}>
-                                    <PaymentCard payment={payment} />
+                            <View key={payment._id} style={styles.dueRow}>
+                                <View style={styles.dueInfo}>
+                                    <Text style={styles.dueName}>{payment.group?.name || `Month ${payment.month}`}</Text>
+                                    <Text style={styles.dueAmount}>₹{payment.amount?.toLocaleString()}</Text>
+                                    <Text style={styles.dueSub}>Month {payment.month}</Text>
                                 </View>
                                 {group && (
-                                    <TouchableOpacity style={styles.payBtn} onPress={() => handlePayPress(group, payment.amount, payment.month)}>
-                                        <Ionicons name="wallet" size={16} color="#fff" />
-                                        <Text style={styles.payBtnText}>PAY</Text>
+                                    <TouchableOpacity
+                                        style={styles.payBtn}
+                                        onPress={() => handlePayPress(group, payment.amount, payment.month)}
+                                        activeOpacity={0.85}
+                                    >
+                                        <Text style={styles.payBtnText}>Pay Now</Text>
                                     </TouchableOpacity>
                                 )}
                             </View>
@@ -182,88 +186,135 @@ export default function PaymentScreen() {
 
             <Text style={styles.sectionTitle}>Payment History</Text>
             {completedPayments.length > 0 ? (
-                completedPayments.map((payment) => <PaymentCard key={payment._id} payment={payment} />)
+                completedPayments.map(p => <PaymentCard key={p._id} payment={p} />)
             ) : (
-                <View style={styles.empty}>
-                    <Ionicons name="receipt-outline" size={48} color="#334455" />
-                    <Text style={styles.emptyText}>No payment history yet</Text>
+                <View style={styles.emptyBox}>
+                    <Ionicons name="receipt-outline" size={48} color={colors.textSecondary} />
+                    <Text style={styles.emptyTitle}>No History Yet</Text>
+                    <Text style={styles.emptyBody}>Your payment history will appear here.</Text>
                 </View>
             )}
 
-            <View style={{ height: 40 }} />
+            <View style={{ height: 90 }} />
 
-            {/* Payment Options Modal */}
-            <Modal visible={modalVisible} transparent={true} animationType="slide" onRequestClose={() => !submitting && setModalVisible(false)}>
+            {/* Payment Method Modal */}
+            <Modal
+                visible={modalVisible}
+                transparent
+                animationType="slide"
+                onRequestClose={() => !submitting && setModalVisible(false)}
+            >
                 <View style={styles.modalOverlay}>
-                    <View style={styles.modalContent}>
+                    <View style={styles.modalSheet}>
+                        <View style={styles.sheetHandle} />
+
                         <View style={styles.modalHeader}>
-                            <Text style={styles.modalTitle}>Choose Payment Method</Text>
+                            <View>
+                                <Text style={styles.modalTitle}>Choose Payment Method</Text>
+                                {selectedPending && (
+                                    <Text style={styles.modalSub}>
+                                        ₹{selectedPending.amount?.toLocaleString()} · {selectedPending.group?.name}
+                                    </Text>
+                                )}
+                            </View>
                             {!submitting && (
-                            <TouchableOpacity onPress={() => setModalVisible(false)}>
-                                <Ionicons name="close" size={24} color="#8899aa" />
-                            </TouchableOpacity>
+                                <TouchableOpacity onPress={() => setModalVisible(false)}>
+                                    <Ionicons name="close" size={22} color={colors.textSecondary} />
+                                </TouchableOpacity>
                             )}
                         </View>
 
                         {!paymentMethod ? (
-                            <View style={styles.methodList}>
-                                <TouchableOpacity style={styles.methodBtn} onPress={handleUPIPay}>
-                                    <Ionicons name="qr-code" size={24} color="#00b894" />
-                                    <Text style={styles.methodText}>Pay via UPI (GPay, PhonePe)</Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity style={styles.methodBtn} onPress={() => setPaymentMethod('bank')}>
-                                    <Ionicons name="business" size={24} color="#6c5ce7" />
-                                    <Text style={styles.methodText}>Bank Transfer (NEFT/IMPS)</Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity style={styles.methodBtn} onPress={() => setPaymentMethod('cash')}>
-                                    <Ionicons name="cash" size={24} color="#f0a500" />
-                                    <Text style={styles.methodText}>Pay in Cash</Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity style={styles.methodBtn} onPress={() => setPaymentMethod('other')}>
-                                    <Ionicons name="image" size={24} color="#e94560" />
-                                    <Text style={styles.methodText}>Upload Payment Receipt</Text>
-                                </TouchableOpacity>
+                            <View style={styles.methodGrid}>
+                                {buildMethods(colors).map(m => (
+                                    <TouchableOpacity
+                                        key={m.id}
+                                        style={styles.methodCard}
+                                        onPress={() => m.id === 'upi' ? handleUPIPay() : setPaymentMethod(m.id)}
+                                        activeOpacity={0.8}
+                                    >
+                                        <View style={[styles.methodIconCircle, { backgroundColor: (m.color || colors.primary) + '18' }]}>
+                                            <Ionicons name={m.icon} size={24} color={m.color || colors.primary} />
+                                        </View>
+                                        <View style={styles.methodTextCol}>
+                                            <Text style={styles.methodLabel}>{m.label}</Text>
+                                            <Text style={styles.methodSub}>{m.sub}</Text>
+                                        </View>
+                                        <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
+                                    </TouchableOpacity>
+                                ))}
                             </View>
                         ) : (
-                            <View style={styles.methodDetail}>
+                            <ScrollView>
                                 {paymentMethod === 'bank' && (
                                     <>
-                                        <Text style={styles.infoText}>Transfer to Admin's Bank Account:</Text>
-                                        <View style={styles.bankInfoCard}>
-                                            <Text style={styles.bankInfoText}>Acct Name: EMI Group Admin</Text>
-                                            <Text style={styles.bankInfoText}>Acct No: 1234567890</Text>
-                                            <Text style={styles.bankInfoText}>IFSC: HDFC0001234</Text>
+                                        <Text style={styles.infoLabel}>Bank Account Details</Text>
+                                        <View style={styles.bankCard}>
+                                            {[
+                                                ['Account Name', 'EMI Group Admin'],
+                                                ['Account No', '1234567890'],
+                                                ['IFSC Code', 'HDFC0001234'],
+                                                ['Bank', 'HDFC Bank'],
+                                            ].map(([k, v]) => (
+                                                <View key={k} style={styles.bankRow}>
+                                                    <Text style={styles.bankKey}>{k}</Text>
+                                                    <Text style={styles.bankVal}>{v}</Text>
+                                                </View>
+                                            ))}
                                         </View>
+                                        <Text style={styles.infoLabel}>UTR / Reference Number</Text>
                                         <TextInput
-                                            style={styles.input}
-                                            placeholder="Enter UTR / Reference Number"
-                                            placeholderTextColor="#8899aa"
+                                            style={[styles.textInput, webOutlineReset, focusBorder(colors, utrFocused)]}
+                                            placeholder="Enter transaction reference"
+                                            placeholderTextColor={colors.textSecondary}
                                             value={utrNumber}
                                             onChangeText={setUtrNumber}
+                                            {...utrFocusProps}
                                         />
                                     </>
                                 )}
+
                                 {paymentMethod === 'cash' && (
-                                    <Text style={styles.infoText}>Please hand over the cash to the Admin. Submit to mark this payment as pending cash verification.</Text>
+                                    <View style={styles.infoBox}>
+                                        <Ionicons name="information-circle" size={20} color={colors.warning} />
+                                        <Text style={styles.infoText}>
+                                            Hand over cash to the admin and submit to mark as pending verification.
+                                        </Text>
+                                    </View>
                                 )}
+
                                 {paymentMethod === 'other' && (
                                     <>
-                                        <Text style={styles.infoText}>Upload a screenshot of your payment receipt.</Text>
+                                        <Text style={styles.infoLabel}>Upload Payment Receipt</Text>
                                         <TouchableOpacity style={styles.uploadBtn} onPress={pickImage}>
-                                            <Ionicons name="cloud-upload" size={24} color="#fff" />
-                                            <Text style={styles.uploadBtnText}>{receiptBase64 ? 'Change Receipt' : 'Select Receipt Image'}</Text>
+                                            <Ionicons name="cloud-upload-outline" size={22} color={colors.primary} />
+                                            <Text style={styles.uploadText}>
+                                                {receiptBase64 ? 'Change Receipt' : 'Select Image'}
+                                            </Text>
                                         </TouchableOpacity>
-                                        {receiptBase64 && <Image source={{ uri: receiptBase64 }} style={styles.receiptPreview} />}
+                                        {receiptBase64 && (
+                                            <Image source={{ uri: receiptBase64 }} style={styles.receiptPreview} />
+                                        )}
                                     </>
                                 )}
 
-                                <TouchableOpacity style={[styles.submitBtn, submitting && { opacity: 0.6 }]} onPress={() => submitPayment(paymentMethod)} disabled={submitting}>
-                                    <Text style={styles.submitBtnText}>Submit Payment Details</Text>
+                                <TouchableOpacity
+                                    style={[styles.submitBtn, submitting && { opacity: 0.6 }]}
+                                    onPress={() => submitPayment(paymentMethod)}
+                                    disabled={submitting}
+                                    activeOpacity={0.85}
+                                >
+                                    {submitting
+                                        ? <ActivityIndicator color="#fff" />
+                                        : <Text style={styles.submitText}>Submit Payment</Text>}
                                 </TouchableOpacity>
-                                <TouchableOpacity style={[styles.submitBtn, { backgroundColor: '#334455', marginTop: 10 }]} onPress={() => setPaymentMethod('')}>
-                                    <Text style={styles.submitBtnText}>Back</Text>
+                                <TouchableOpacity
+                                    style={styles.backBtn}
+                                    onPress={() => setPaymentMethod('')}
+                                >
+                                    <Text style={styles.backBtnText}>← Back to methods</Text>
                                 </TouchableOpacity>
-                            </View>
+                            </ScrollView>
                         )}
                     </View>
                 </View>
@@ -272,35 +323,180 @@ export default function PaymentScreen() {
     );
 }
 
-const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#1a1a2e', paddingHorizontal: 20 },
-    center: { flex: 1, backgroundColor: '#1a1a2e', alignItems: 'center', justifyContent: 'center' },
-    header: { color: '#fff', fontSize: 24, fontWeight: '800', paddingTop: 60, paddingBottom: 16 },
-    sectionTitle: { color: '#fff', fontSize: 16, fontWeight: '700', marginBottom: 12, marginTop: 8 },
-    pendingBanner: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f0a50020', padding: 12, borderRadius: 8, marginBottom: 12, borderLeftWidth: 3, borderLeftColor: '#f0a500' },
-    pendingBannerText: { color: '#f0a500', fontSize: 14, fontWeight: '600', marginLeft: 8 },
-    pendingRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
-    pendingInfo: { flex: 1 },
-    payBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#e94560', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, marginLeft: 8 },
-    payBtnText: { color: '#fff', fontSize: 12, fontWeight: '800', marginLeft: 4 },
-    empty: { alignItems: 'center', paddingVertical: 40 },
-    emptyText: { color: '#556677', fontSize: 14, marginTop: 12 },
-    
-    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
-    modalContent: { backgroundColor: '#1f1f3a', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40 },
-    modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-    modalTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
-    methodList: { gap: 12 },
-    methodBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#16162a', padding: 16, borderRadius: 12, borderWidth: 1, borderColor: '#2a2a4a' },
-    methodText: { color: '#fff', fontSize: 16, marginLeft: 16 },
-    methodDetail: { gap: 16 },
-    infoText: { color: '#8899aa', fontSize: 14, lineHeight: 20 },
-    bankInfoCard: { backgroundColor: '#16162a', padding: 16, borderRadius: 12, borderWidth: 1, borderColor: '#6c5ce7' },
-    bankInfoText: { color: '#fff', fontSize: 14, marginBottom: 4 },
-    input: { backgroundColor: '#16162a', color: '#fff', padding: 16, borderRadius: 12, borderWidth: 1, borderColor: '#2a2a4a', fontSize: 16 },
-    uploadBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#e94560', padding: 16, borderRadius: 12 },
-    uploadBtnText: { color: '#fff', fontSize: 16, fontWeight: '600', marginLeft: 8 },
-    receiptPreview: { width: '100%', height: 200, borderRadius: 12, resizeMode: 'cover', marginTop: 12 },
-    submitBtn: { backgroundColor: '#00b894', padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 16 },
-    submitBtnText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
-});
+function makeStyles(colors) {
+    return StyleSheet.create({
+        container: { flex: 1, backgroundColor: colors.backgroundSecondary },
+        center:    { flex: 1, backgroundColor: colors.backgroundSecondary, alignItems: 'center', justifyContent: 'center' },
+        header: {
+            backgroundColor: colors.background,
+            paddingHorizontal: 16,
+            paddingTop: 56,
+            paddingBottom: 12,
+            borderBottomWidth: 1,
+            borderBottomColor: colors.border,
+        },
+        headerTitle:   { fontSize: 20, fontFamily: F.bold, color: colors.text },
+        sectionTitle:  { fontSize: 16, fontFamily: F.medium, color: colors.text, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8 },
+        pendingBanner: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            backgroundColor: colors.warningLight,
+            marginHorizontal: 16,
+            marginTop: 14,
+            padding: 12,
+            borderRadius: 10,
+            borderLeftWidth: 3,
+            borderLeftColor: colors.warning,
+            gap: 8,
+        },
+        pendingBannerText: { fontSize: 14, fontFamily: F.medium, color: colors.warning },
+        dueRow: {
+            backgroundColor: colors.background,
+            borderWidth: 1,
+            borderColor: colors.border,
+            borderRadius: 14,
+            padding: 16,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.08,
+            shadowRadius: 8,
+            elevation: 3,
+            marginHorizontal: 16,
+            marginBottom: 10,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+        },
+        dueInfo:   { flex: 1 },
+        dueName:   { fontSize: 14, fontFamily: F.semibold, color: colors.text },
+        dueAmount: { fontSize: 22, fontFamily: F.bold, color: colors.primary, marginTop: 2 },
+        dueSub:    { fontSize: 11, fontFamily: F.regular, color: colors.textSecondary },
+        payBtn: {
+            height: 40,
+            paddingHorizontal: 18,
+            borderRadius: 10,
+            backgroundColor: colors.primary,
+            alignItems: 'center',
+            justifyContent: 'center',
+            shadowColor: colors.primary,
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.25,
+            shadowRadius: 6,
+            elevation: 3,
+        },
+        payBtnText: { fontSize: 13, fontFamily: F.semibold, color: '#fff' },
+        emptyBox: {
+            marginHorizontal: 16,
+            marginTop: 8,
+            borderRadius: 12,
+            borderWidth: 2,
+            borderStyle: 'dashed',
+            borderColor: colors.border,
+            backgroundColor: colors.background,
+            padding: 32,
+            alignItems: 'center',
+        },
+        emptyTitle: { fontSize: 16, fontFamily: F.medium, color: colors.text, marginTop: 10 },
+        emptyBody:  { fontSize: 14, fontFamily: F.regular, color: colors.textSecondary, textAlign: 'center', marginTop: 4 },
+        // Modal
+        modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
+        modalSheet: {
+            backgroundColor: colors.background,
+            borderTopLeftRadius: 24,
+            borderTopRightRadius: 24,
+            padding: 24,
+            paddingBottom: 40,
+            maxHeight: '85%',
+        },
+        sheetHandle: {
+            width: 32,
+            height: 4,
+            backgroundColor: colors.border,
+            borderRadius: 2,
+            alignSelf: 'center',
+            marginBottom: 16,
+        },
+        modalHeader:  { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 },
+        modalTitle:   { fontSize: 20, fontFamily: F.semibold, color: colors.text },
+        modalSub:     { fontSize: 14, fontFamily: F.regular, color: colors.textSecondary, marginTop: 3 },
+        methodGrid:   { gap: 10 },
+        methodCard: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            borderWidth: 1,
+            borderColor: colors.border,
+            borderRadius: 14,
+            padding: 14,
+            backgroundColor: colors.background,
+            gap: 12,
+        },
+        methodIconCircle: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+        methodTextCol:    { flex: 1 },
+        methodLabel:      { fontSize: 14, fontFamily: F.semibold, color: colors.text },
+        methodSub:        { fontSize: 11, fontFamily: F.regular, color: colors.textSecondary, marginTop: 1 },
+        infoLabel:        { fontSize: 14, fontFamily: F.medium, color: colors.text, marginBottom: 8, marginTop: 4 },
+        bankCard: {
+            backgroundColor: colors.backgroundSecondary,
+            borderRadius: 12,
+            padding: 14,
+            borderWidth: 1,
+            borderColor: colors.border,
+            marginBottom: 16,
+        },
+        bankRow:  { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
+        bankKey:  { fontSize: 11, fontFamily: F.regular, color: colors.textSecondary },
+        bankVal:  { fontSize: 14, fontFamily: F.semibold, color: colors.text },
+        textInput: {
+            height: 56,
+            paddingHorizontal: 16,
+            borderWidth: 1,
+            borderColor: colors.border,
+            borderRadius: 10,
+            fontSize: 14,
+            fontFamily: F.regular,
+            color: colors.text,
+            backgroundColor: colors.backgroundSecondary,
+            marginBottom: 8,
+        },
+        infoBox: {
+            flexDirection: 'row',
+            alignItems: 'flex-start',
+            backgroundColor: colors.warningLight,
+            borderRadius: 10,
+            padding: 14,
+            gap: 10,
+            marginBottom: 8,
+        },
+        infoText: { fontSize: 14, fontFamily: F.regular, color: colors.warning, flex: 1, lineHeight: 20 },
+        uploadBtn: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            height: 48,
+            borderRadius: 10,
+            borderWidth: 1.5,
+            borderStyle: 'dashed',
+            borderColor: colors.primary,
+            gap: 8,
+            marginBottom: 12,
+        },
+        uploadText:     { fontSize: 14, fontFamily: F.medium, color: colors.primary },
+        receiptPreview: { width: '100%', height: 180, borderRadius: 12, resizeMode: 'cover', marginBottom: 12 },
+        submitBtn: {
+            height: 56,
+            borderRadius: 12,
+            backgroundColor: colors.primary,
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginTop: 8,
+            shadowColor: colors.primary,
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.3,
+            shadowRadius: 12,
+            elevation: 4,
+        },
+        submitText:  { fontSize: 14, fontFamily: F.semibold, color: '#FFFFFF' },
+        backBtn:     { alignItems: 'center', marginTop: 14 },
+        backBtnText: { fontSize: 14, fontFamily: F.regular, color: colors.textSecondary },
+    });
+}

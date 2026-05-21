@@ -1,14 +1,13 @@
 import axios from 'axios';
+import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
+import Constants from 'expo-constants';
 
-// Use environment variable for API URL or default to localhost
-// Note: For web/browser testing, always use localhost
-const isWebPlatform = typeof window !== 'undefined';
-const API_BASE = process.env.EXPO_PUBLIC_API_URL ||
-    (isWebPlatform ? 'http://localhost:5000/api' :
-     (__DEV__ ? 'http://localhost:5000/api' : 'https://android-app-js8f.onrender.com/api'));
-
-console.log('API_BASE:', API_BASE, 'isWeb:', isWebPlatform);
+const isWebPlatform = Platform.OS === 'web';
+const API_BASE =
+    process.env.EXPO_PUBLIC_API_URL ||
+    Constants.expoConfig?.extra?.apiBase ||
+    'http://localhost:5000/api';
 
 // Storage helper that works on both mobile and web
 const storage = {
@@ -65,8 +64,16 @@ api.interceptors.response.use(
 );
 
 // ── Auth ──
+export const checkPhone = (phone) => api.get('/auth/check-phone', { params: { phone } });
+export const checkUserType = (phone) => api.post('/auth/check-user-type', { phone });
 export const sendOtp = (phone) => api.post('/auth/send-otp', { phone });
 export const verifyOtp = (phone, otp) => api.post('/auth/verify-otp', { phone, otp });
+export const loginWithPin = (phone, pin) => api.post('/auth/verify-pin', { phone, pin });
+export const signup = (data) => api.post('/auth/signup-with-pin', data);
+export const setPin = (phone, pin) => api.post('/auth/set-pin', { phone, pin });
+export const hasPin = (phone) => api.post('/auth/has-pin', { phone });
+export const resetPin = (phone, pin) => api.post('/auth/update-pin', { phone, newPin: pin });
+export const forgotPassword = (phone) => api.post('/auth/forgot-password', { phone });
 export const updateProfile = (data) => api.put('/auth/profile', data);
 export const getMe = () => api.get('/auth/me');
 
@@ -75,6 +82,7 @@ export const getGroups = (params) => api.get('/groups', { params });
 export const getGroup = (id) => api.get(`/groups/${id}`);
 export const createGroup = (data) => api.post('/groups', data);
 export const updateGroup = (id, data) => api.put(`/groups/${id}`, data);
+export const deleteGroup = (id) => api.delete(`/groups/${id}`);
 export const addMember = (groupId, userId) => api.post(`/groups/${groupId}/members`, { userId });
 export const removeMember = (groupId, userId) => api.delete(`/groups/${groupId}/members/${userId}`);
 
@@ -92,11 +100,14 @@ export const getEligibleMembers = (groupId) => api.get(`/emi/eligible/${groupId}
 export const getAdminDashboard = () => api.get('/admin/dashboard');
 export const getAdminUsers = (params) => api.get('/admin/users', { params });
 export const updateUserRole = (userId, role) => api.put(`/admin/users/${userId}/role`, { role });
+export const deleteUser = (userId) => api.delete(`/admin/users/${userId}`);
 export const sendBulkNotification = (data) => api.post('/admin/notify', data);
 export const triggerReminders = () => api.post('/admin/trigger-reminders');
 export const getGroupHealth = () => api.get('/admin/analytics/group-health');
+export const getRevenueAnalytics = () => api.get('/admin/analytics/revenue');
 
 // ── Payments (admin) ──
+export const getAdminPayments = (status) => api.get('/payments/admin/list', { params: status ? { status } : {} });
 export const getPendingPayments = () => api.get('/payments/pending/all');
 export const verifyPayment = (id, status, notes) => api.put(`/payments/${id}/verify`, { status, notes });
 

@@ -49,9 +49,31 @@ const enumValue = (field, allowedValues) => body(field)
     .isIn(allowedValues)
     .withMessage(`${field} must be one of: ${allowedValues.join(', ')}`);
 
+// Password (min 6 chars)
+const password = (field = 'password') => body(field)
+    .isString()
+    .isLength({ min: 6, max: 128 })
+    .withMessage('Password must be at least 6 characters');
+
+// PIN (exactly 4 digits)
+const pin = (field = 'pin') => body(field)
+    .isString()
+    .matches(/^\d{4}$/)
+    .withMessage('PIN must be exactly 4 digits');
+
 // ─── Auth Validators ───
-const sendOtpValidations = [phone()];
-const verifyOtpValidations = [phone(), otp()];
+const sendOtpValidations       = [phone()];
+const verifyOtpValidations     = [phone(), otp()];
+const loginPasswordValidations = [phone(), password()];
+const signupValidations        = [phone(), otp(), password(), requiredString('name', 1)];
+const resetPasswordValidations = [phone(), otp(), password('newPassword')];
+
+// ─── PIN Auth Validators ───
+const checkUserTypeValidations = [phone()];
+const loginWithPinValidations  = [phone(), pin()];
+const signupWithPinValidations = [phone(), otp(), pin(), requiredString('name', 1)];
+const setPinValidations        = [pin()];
+const resetPinValidations      = [phone(), otp(), pin()];
 
 // ─── Payment Validators ───
 const initiatePaymentValidations = [
@@ -106,8 +128,12 @@ module.exports = {
     validate,
     // Common
     objectId, phone, otp, positiveInt, positiveNumber, requiredString, optionalString, enumValue,
-    // Auth
+    // Auth (password)
     sendOtpValidations, verifyOtpValidations,
+    loginPasswordValidations, signupValidations, resetPasswordValidations,
+    // Auth (PIN)
+    checkUserTypeValidations, loginWithPinValidations, signupWithPinValidations,
+    setPinValidations, resetPinValidations,
     // Payments
     initiatePaymentValidations,
     // Groups

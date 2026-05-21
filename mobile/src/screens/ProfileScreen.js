@@ -1,29 +1,51 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
-    View, Text, ScrollView, TouchableOpacity, TextInput,
-    StyleSheet, Alert, ActivityIndicator,
+    View, Text, ScrollView, TouchableOpacity, StyleSheet,
+    TextInput, Modal, ActivityIndicator, Alert,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import { updateProfile } from '../services/api';
-import Avatar from '../components/Avatar';
-import ProgressRing from '../components/ProgressRing';
+import { F } from '../theme';
+import { PRIMARY_COLORS, AVAILABLE_THEMES } from '../theme/colors';
+import Toast, { useToast } from '../components/Toast';
+import { useInputFocus, focusBorder, webOutlineReset } from '../hooks/useInputFocus';
 
-export default function ProfileScreen() {
+function MenuItem({ icon, label, onPress, danger, colors }) {
+    const styles = useMemo(() => makeStyles(colors), [colors]);
+    return (
+        <TouchableOpacity style={styles.menuItem} onPress={onPress} activeOpacity={0.7}>
+            <Ionicons name={icon} size={18} color={danger ? colors.error : colors.text} style={{ marginRight: 12 }} />
+            <Text style={[styles.menuLabel, danger && { color: colors.error }]}>{label}</Text>
+            <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
+        </TouchableOpacity>
+    );
+}
+
+export default function ProfileScreen({ navigation }) {
     const { user, updateUser, logout } = useAuth();
-    const [editing, setEditing] = useState(false);
+    const { colors, isDark, setIsDark, primaryTheme, setPrimaryTheme } = useTheme();
+    const [showEdit, setShowEdit] = useState(false);
     const [name, setName] = useState(user?.name || '');
     const [email, setEmail] = useState(user?.email || '');
     const [saving, setSaving] = useState(false);
+    const { toast, show } = useToast();
+    const [nameFocused, nameFocusProps] = useInputFocus();
+    const [emailFocused, emailFocusProps] = useInputFocus();
+
+    const isAdmin = user?.role === 'admin';
+    const initials = (user?.name || user?.phone || 'U').charAt(0).toUpperCase();
 
     const handleSave = async () => {
         setSaving(true);
         try {
             const res = await updateProfile({ name, email });
             updateUser(res.data.user);
-            setEditing(false);
-            Alert.alert('Success', 'Profile updated!');
+            setShowEdit(false);
+            show('Profile updated');
         } catch (err) {
             Alert.alert('Error', err.response?.data?.error || 'Update failed');
         } finally {
@@ -39,188 +61,406 @@ export default function ProfileScreen() {
             quality: 0.5,
             base64: true,
         });
-
         if (!result.canceled && result.assets[0].base64) {
-            const base64Uri = `data:image/jpeg;base64,${result.assets[0].base64}`;
             try {
-                const res = await updateProfile({ avatar: base64Uri });
+                const res = await updateProfile({ avatar: `data:image/jpeg;base64,${result.assets[0].base64}` });
                 updateUser(res.data.user);
-            } catch (err) {
+                show('Avatar updated');
+            } catch {
                 Alert.alert('Error', 'Failed to update avatar');
             }
         }
     };
 
-    const handleLogout = () => {
-        // Direct logout without Alert for web compatibility
-        logout();
-    };
+    const [confirmLogout, setConfirmLogout] = React.useState(false);
+
+    const handleLogout = () => setConfirmLogout(true);
+
+    const styles = useMemo(() => makeStyles(colors), [colors]);
 
     return (
-        <ScrollView style={styles.container}>
-            <Text style={styles.header}>Profile</Text>
+        <View style={styles.root}>
+            <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 90 }}>
+                {/* Header */}
+                <View style={styles.headerBar}>
+                    <Text style={styles.headerTitle}>Profile</Text>
+                </View>
 
-            {/* Avatar Section */}
-            <View style={styles.avatarSection}>
-                <TouchableOpacity onPress={handlePickAvatar}>
-                    <Avatar uri={user?.avatar} name={user?.name} size={100} />
-                    <View style={styles.cameraIcon}>
-                        <Ionicons name="camera" size={16} color="#fff" />
+                {/* Gradient Profile Card */}
+                <LinearGradient
+                    colors={[colors.primary, colors.primaryDark]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.profileCard}
+                >
+                    <TouchableOpacity onPress={handlePickAvatar} activeOpacity={0.8}>
+                        <View style={styles.avatarCircle}>
+                            <Text style={styles.avatarInitial}>{initials}</Text>
+                        </View>
+                    </TouchableOpacity>
+                    <View style={styles.profileInfo}>
+                        <Text style={styles.profileName}>{user?.name || 'Set your name'}</Text>
+                        <Text style={styles.profilePhone}>+91 {user?.phone}</Text>
+                        <View style={styles.roleBadge}>
+                            <Text style={styles.roleBadgeText}>{user?.role?.toUpperCase()}</Text>
+                        </View>
                     </View>
-                </TouchableOpacity>
-                <Text style={styles.userName}>{user?.name || 'Set your name'}</Text>
-                <Text style={styles.userPhone}>{user?.phone}</Text>
-                <View style={styles.roleBadge}>
-                    <Text style={styles.roleText}>{user?.role?.toUpperCase()}</Text>
-                </View>
-            </View>
+                </LinearGradient>
 
-            {/* Progress */}
-            <View style={styles.progressCard}>
-                <Text style={styles.cardTitle}>Overall Progress</Text>
-                <View style={styles.progressRow}>
-                    <ProgressRing progress={0} size={80} strokeWidth={6} label="Groups" />
-                    <View style={styles.progressInfo}>
-                        <Text style={styles.progressLabel}>You're part of active groups.</Text>
-                        <Text style={styles.progressLabel}>Keep your payments on track!</Text>
-                    </View>
-                </View>
-            </View>
-
-            {/* Profile Form */}
-            <View style={styles.formCard}>
-                <View style={styles.formHeader}>
-                    <Text style={styles.cardTitle}>Personal Info</Text>
-                    {!editing && (
-                        <TouchableOpacity onPress={() => setEditing(true)}>
-                            <Ionicons name="create-outline" size={20} color="#e94560" />
-                        </TouchableOpacity>
-                    )}
+                {/* ACCOUNT section */}
+                <Text style={styles.sectionTitle}>ACCOUNT</Text>
+                <View style={styles.menuCard}>
+                    <MenuItem
+                        icon="create-outline"
+                        label="Edit Profile"
+                        onPress={() => { setName(user?.name || ''); setEmail(user?.email || ''); setShowEdit(true); }}
+                        colors={colors}
+                    />
+                    <View style={styles.menuDivider} />
+                    <MenuItem
+                        icon="document-text-outline"
+                        label="Privacy Policy"
+                        onPress={() => Alert.alert('Privacy Policy', 'Available at emigroup.app/privacy')}
+                        colors={colors}
+                    />
                 </View>
 
-                <View style={styles.field}>
-                    <Text style={styles.fieldLabel}>Full Name</Text>
-                    {editing ? (
-                        <TextInput
-                            style={styles.input}
-                            value={name}
-                            onChangeText={setName}
-                            placeholder="Enter your name"
-                            placeholderTextColor="#556677"
-                        />
-                    ) : (
-                        <Text style={styles.fieldValue}>{user?.name || '—'}</Text>
-                    )}
-                </View>
-
-                <View style={styles.field}>
-                    <Text style={styles.fieldLabel}>Email</Text>
-                    {editing ? (
-                        <TextInput
-                            style={styles.input}
-                            value={email}
-                            onChangeText={setEmail}
-                            placeholder="Enter email"
-                            placeholderTextColor="#556677"
-                            keyboardType="email-address"
-                        />
-                    ) : (
-                        <Text style={styles.fieldValue}>{user?.email || '—'}</Text>
-                    )}
-                </View>
-
-                <View style={styles.field}>
-                    <Text style={styles.fieldLabel}>Phone</Text>
-                    <Text style={styles.fieldValue}>{user?.phone}</Text>
-                </View>
-
-                {editing && (
-                    <View style={styles.editActions}>
-                        <TouchableOpacity style={styles.cancelBtn} onPress={() => setEditing(false)}>
-                            <Text style={styles.cancelText}>Cancel</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.saveBtn} onPress={handleSave} disabled={saving}>
-                            {saving ? <ActivityIndicator color="#fff" size="small" /> : (
-                                <Text style={styles.saveText}>Save</Text>
-                            )}
+                {/* THEME */}
+                <Text style={styles.sectionTitle}>APPEARANCE</Text>
+                <View style={styles.menuCard}>
+                    {/* Dark / Light Toggle */}
+                    <View style={styles.themeRow}>
+                        <View style={styles.themeRowLeft}>
+                            <Ionicons
+                                name={isDark ? 'moon' : 'sunny'}
+                                size={18}
+                                color={isDark ? colors.primary : colors.warning}
+                                style={{ marginRight: 12 }}
+                            />
+                            <Text style={styles.themeRowLabel}>
+                                {isDark ? 'Dark Mode' : 'Light Mode'}
+                            </Text>
+                        </View>
+                        <TouchableOpacity
+                            style={[styles.switchTrack, isDark && styles.switchTrackOn]}
+                            onPress={() => setIsDark(!isDark)}
+                            activeOpacity={0.8}
+                        >
+                            <View style={[styles.switchThumb, isDark && styles.switchThumbOn]} />
                         </TouchableOpacity>
                     </View>
-                )}
-            </View>
 
-            {/* Account Actions */}
-            <View style={styles.actionsCard}>
-                <TouchableOpacity style={styles.actionRow} onPress={handleLogout}>
-                    <Ionicons name="log-out-outline" size={22} color="#e94560" />
-                    <Text style={styles.actionText}>Logout</Text>
-                    <Ionicons name="chevron-forward" size={18} color="#555" />
-                </TouchableOpacity>
-            </View>
+                    <View style={styles.menuDivider} />
 
-            <Text style={styles.version}>EMI Group v1.0.0</Text>
-            <View style={{ height: 40 }} />
-        </ScrollView>
+                    {/* Primary Color Picker */}
+                    <View style={styles.colorSection}>
+                        <Text style={styles.colorSectionLabel}>Primary Color</Text>
+                        <View style={styles.colorSwatches}>
+                            {Object.entries(AVAILABLE_THEMES).map(([key, label]) => {
+                                const swatch = PRIMARY_COLORS[key]?.primary;
+                                const selected = primaryTheme === key;
+                                return (
+                                    <TouchableOpacity
+                                        key={key}
+                                        onPress={() => setPrimaryTheme(key)}
+                                        activeOpacity={0.8}
+                                        style={[
+                                            styles.swatch,
+                                            { backgroundColor: swatch },
+                                            selected && { borderColor: colors.text, borderWidth: 3 },
+                                        ]}
+                                    >
+                                        {selected && (
+                                            <Ionicons name="checkmark" size={20} color="#fff" />
+                                        )}
+                                    </TouchableOpacity>
+                                );
+                            })}
+                        </View>
+                    </View>
+                </View>
+
+                {/* DANGER ZONE */}
+                <Text style={styles.sectionTitle}>DANGER ZONE</Text>
+                <View style={styles.menuCard}>
+                    <MenuItem
+                        icon="log-out-outline"
+                        label="Logout"
+                        onPress={handleLogout}
+                        danger
+                        colors={colors}
+                    />
+                </View>
+
+                <Text style={styles.version}>EMI Group v1.0.0</Text>
+            </ScrollView>
+
+            {/* Edit Profile Modal */}
+            <Modal visible={showEdit} transparent animationType="slide" onRequestClose={() => setShowEdit(false)}>
+                <View style={styles.overlay}>
+                    <View style={styles.sheet}>
+                        <View style={styles.handle} />
+                        <View style={styles.sheetHeader}>
+                            <Text style={styles.sheetTitle}>Edit Profile</Text>
+                            <TouchableOpacity onPress={() => setShowEdit(false)}>
+                                <Ionicons name="close" size={22} color={colors.textSecondary} />
+                            </TouchableOpacity>
+                        </View>
+
+                        <View style={styles.field}>
+                            <Text style={styles.fieldLabel}>Full Name</Text>
+                            <TextInput
+                                style={[styles.input, webOutlineReset, focusBorder(colors, nameFocused)]}
+                                value={name}
+                                onChangeText={setName}
+                                placeholder="Your full name"
+                                placeholderTextColor={colors.textSecondary}
+                                autoFocus
+                                {...nameFocusProps}
+                            />
+                        </View>
+                        <View style={styles.field}>
+                            <Text style={styles.fieldLabel}>Email</Text>
+                            <TextInput
+                                style={[styles.input, webOutlineReset, focusBorder(colors, emailFocused)]}
+                                value={email}
+                                onChangeText={setEmail}
+                                placeholder="your@email.com"
+                                placeholderTextColor={colors.textSecondary}
+                                keyboardType="email-address"
+                                autoCapitalize="none"
+                                {...emailFocusProps}
+                            />
+                        </View>
+                        <View style={styles.field}>
+                            <Text style={styles.fieldLabel}>Phone (cannot change)</Text>
+                            <View style={[styles.input, styles.disabledInput]}>
+                                <Text style={styles.disabledText}>{user?.phone}</Text>
+                            </View>
+                        </View>
+
+                        <TouchableOpacity
+                            style={[styles.saveBtn, saving && { opacity: 0.6 }]}
+                            onPress={handleSave}
+                            disabled={saving}
+                            activeOpacity={0.85}
+                        >
+                            {saving
+                                ? <ActivityIndicator color="#fff" />
+                                : <Text style={styles.saveBtnText}>Save Changes</Text>}
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
+
+            {/* Logout Confirm Modal */}
+            <Modal visible={confirmLogout} transparent animationType="fade" onRequestClose={() => setConfirmLogout(false)}>
+                <View style={styles.overlay}>
+                    <View style={styles.confirmSheet}>
+                        <Text style={styles.confirmTitle}>Logout</Text>
+                        <Text style={styles.confirmBody}>Are you sure you want to logout?</Text>
+                        <View style={styles.confirmBtns}>
+                            <TouchableOpacity style={styles.cancelBtn} onPress={() => setConfirmLogout(false)} activeOpacity={0.8}>
+                                <Text style={styles.cancelBtnText}>Cancel</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={styles.logoutBtn} onPress={() => { setConfirmLogout(false); logout(); }} activeOpacity={0.8}>
+                                <Text style={styles.logoutBtnText}>Logout</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
+
+            <Toast {...toast} />
+        </View>
     );
 }
 
-const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#1a1a2e', paddingHorizontal: 20 },
-    header: {
-        color: '#fff', fontSize: 24, fontWeight: '800', paddingTop: 60, paddingBottom: 16,
-    },
-    avatarSection: { alignItems: 'center', marginBottom: 24 },
-    cameraIcon: {
-        position: 'absolute', bottom: 0, right: 0,
-        backgroundColor: '#e94560', borderRadius: 14, width: 28, height: 28,
-        alignItems: 'center', justifyContent: 'center',
-        borderWidth: 2, borderColor: '#1a1a2e',
-    },
-    userName: { color: '#fff', fontSize: 22, fontWeight: '700', marginTop: 12 },
-    userPhone: { color: '#8899aa', fontSize: 14, marginTop: 4 },
-    roleBadge: {
-        backgroundColor: '#e9456020', borderRadius: 8,
-        paddingHorizontal: 12, paddingVertical: 4, marginTop: 8,
-    },
-    roleText: { color: '#e94560', fontSize: 11, fontWeight: '800', letterSpacing: 1 },
-    progressCard: {
-        backgroundColor: '#0f3460', borderRadius: 16, padding: 16,
-        marginBottom: 16, borderWidth: 1, borderColor: '#1a1a4e',
-    },
-    cardTitle: { color: '#fff', fontSize: 16, fontWeight: '700', marginBottom: 12 },
-    progressRow: { flexDirection: 'row', alignItems: 'center' },
-    progressInfo: { flex: 1, marginLeft: 16 },
-    progressLabel: { color: '#8899aa', fontSize: 13, lineHeight: 20 },
-    formCard: {
-        backgroundColor: '#0f3460', borderRadius: 16, padding: 16,
-        marginBottom: 16, borderWidth: 1, borderColor: '#1a1a4e',
-    },
-    formHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    field: { marginTop: 14 },
-    fieldLabel: { color: '#8899aa', fontSize: 12, fontWeight: '600', marginBottom: 4 },
-    fieldValue: { color: '#fff', fontSize: 15 },
-    input: {
-        backgroundColor: '#1a1a2e', borderRadius: 10, paddingHorizontal: 14,
-        paddingVertical: 10, color: '#fff', fontSize: 15,
-        borderWidth: 1, borderColor: '#1a1a4e',
-    },
-    editActions: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 16, gap: 10 },
-    cancelBtn: {
-        backgroundColor: '#1a1a2e', borderRadius: 10,
-        paddingHorizontal: 20, paddingVertical: 10,
-    },
-    cancelText: { color: '#8899aa', fontWeight: '600' },
-    saveBtn: {
-        backgroundColor: '#e94560', borderRadius: 10,
-        paddingHorizontal: 24, paddingVertical: 10,
-    },
-    saveText: { color: '#fff', fontWeight: '700' },
-    actionsCard: {
-        backgroundColor: '#0f3460', borderRadius: 16, padding: 4,
-        marginBottom: 16, borderWidth: 1, borderColor: '#1a1a4e',
-    },
-    actionRow: {
-        flexDirection: 'row', alignItems: 'center', padding: 14,
-    },
-    actionText: { color: '#e94560', fontSize: 15, fontWeight: '600', flex: 1, marginLeft: 12 },
-    version: { color: '#334455', fontSize: 12, textAlign: 'center', marginTop: 8 },
-});
+function makeStyles(colors) {
+    return StyleSheet.create({
+        root:        { flex: 1 },
+        container:   { flex: 1, backgroundColor: colors.backgroundSecondary },
+        headerBar: {
+            backgroundColor: colors.background,
+            paddingHorizontal: 16,
+            paddingTop: 56,
+            paddingBottom: 12,
+            borderBottomWidth: 1,
+            borderBottomColor: colors.border,
+        },
+        headerTitle: { fontSize: 20, fontFamily: F.bold, color: colors.text },
+        profileCard: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            marginHorizontal: 16,
+            marginTop: 16,
+            borderRadius: 12,
+            padding: 16,
+        },
+        avatarCircle: {
+            width: 48,
+            height: 48,
+            borderRadius: 24,
+            backgroundColor: 'rgba(255,255,255,0.3)',
+            alignItems: 'center',
+            justifyContent: 'center',
+        },
+        avatarInitial: { fontSize: 20, fontFamily: F.bold, color: '#fff' },
+        profileInfo:   { marginLeft: 14, flex: 1 },
+        profileName:   { fontSize: 16, fontFamily: F.bold, color: '#fff' },
+        profilePhone:  { fontSize: 12, fontFamily: F.regular, color: 'rgba(255,255,255,0.85)', marginTop: 2 },
+        roleBadge: {
+            alignSelf: 'flex-start',
+            backgroundColor: colors.success,
+            borderRadius: 6,
+            paddingHorizontal: 8,
+            paddingVertical: 3,
+            marginTop: 6,
+        },
+        roleBadgeText: { fontSize: 11, fontFamily: F.semibold, color: '#fff' },
+        sectionTitle: {
+            fontSize: 12,
+            fontFamily: F.semibold,
+            color: colors.textSecondary,
+            letterSpacing: 0.8,
+            paddingHorizontal: 16,
+            paddingTop: 20,
+            paddingBottom: 8,
+        },
+        menuCard: {
+            backgroundColor: colors.background,
+            borderWidth: 1,
+            borderColor: colors.border,
+            borderRadius: 10,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.08,
+            shadowRadius: 8,
+            elevation: 3,
+            marginHorizontal: 16,
+            padding: 0,
+            overflow: 'hidden',
+        },
+        menuItem: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            paddingHorizontal: 16,
+            paddingVertical: 14,
+            backgroundColor: colors.background,
+            minHeight: 48,
+        },
+        menuLabel:    { flex: 1, fontSize: 14, fontFamily: F.regular, color: colors.text },
+        menuDivider:  { height: 1, backgroundColor: colors.border, marginLeft: 16 },
+        themeRow: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            paddingHorizontal: 16,
+            paddingVertical: 14,
+            minHeight: 48,
+        },
+        themeRowLeft:  { flexDirection: 'row', alignItems: 'center', flex: 1 },
+        themeRowLabel: { fontSize: 14, fontFamily: F.medium, color: colors.text },
+        switchTrack: {
+            width: 48,
+            height: 28,
+            borderRadius: 14,
+            backgroundColor: colors.border,
+            padding: 2,
+            justifyContent: 'center',
+        },
+        switchTrackOn: { backgroundColor: colors.primary },
+        switchThumb: {
+            width: 24,
+            height: 24,
+            borderRadius: 12,
+            backgroundColor: '#fff',
+            alignSelf: 'flex-start',
+        },
+        switchThumbOn: { alignSelf: 'flex-end' },
+        colorSection: { paddingHorizontal: 16, paddingVertical: 14 },
+        colorSectionLabel: {
+            fontSize: 13,
+            fontFamily: F.medium,
+            color: colors.textSecondary,
+            marginBottom: 12,
+        },
+        colorSwatches: { flexDirection: 'row', justifyContent: 'space-between' },
+        swatch: {
+            width: 52,
+            height: 52,
+            borderRadius: 12,
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderWidth: 0,
+            borderColor: 'transparent',
+        },
+        version:      { fontSize: 12, fontFamily: F.regular, color: colors.textSecondary, textAlign: 'center', marginTop: 24 },
+        overlay:      { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
+        sheet: {
+            backgroundColor: colors.background,
+            borderTopLeftRadius: 24,
+            borderTopRightRadius: 24,
+            padding: 24,
+            paddingBottom: 36,
+        },
+        handle: {
+            width: 40,
+            height: 4,
+            backgroundColor: colors.border,
+            borderRadius: 2,
+            alignSelf: 'center',
+            marginBottom: 20,
+        },
+        sheetHeader:  { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+        sheetTitle:   { fontSize: 18, fontFamily: F.bold, color: colors.text },
+        field:        { marginBottom: 14 },
+        fieldLabel:   { fontSize: 12, fontFamily: F.medium, color: colors.textSecondary, marginBottom: 6 },
+        input: {
+            height: 52,
+            paddingHorizontal: 16,
+            borderWidth: 1,
+            borderColor: colors.border,
+            borderRadius: 10,
+            fontSize: 14,
+            fontFamily: F.regular,
+            color: colors.text,
+            backgroundColor: colors.backgroundSecondary,
+        },
+        disabledInput: { backgroundColor: colors.backgroundSecondary, justifyContent: 'center' },
+        disabledText:  { fontSize: 14, fontFamily: F.regular, color: colors.textSecondary },
+        saveBtn: {
+            height: 56,
+            backgroundColor: colors.primary,
+            borderRadius: 12,
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginTop: 8,
+            shadowColor: colors.primary,
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.3,
+            shadowRadius: 12,
+            elevation: 4,
+        },
+        saveBtnText: { fontSize: 15, fontFamily: F.semibold, color: '#fff' },
+        confirmSheet: {
+            backgroundColor: colors.background,
+            borderRadius: 16,
+            padding: 24,
+            marginHorizontal: 32,
+        },
+        confirmTitle: { fontSize: 18, fontFamily: F.bold, color: colors.text, marginBottom: 8 },
+        confirmBody:  { fontSize: 14, fontFamily: F.regular, color: colors.textSecondary, marginBottom: 24 },
+        confirmBtns:  { flexDirection: 'row', gap: 12 },
+        cancelBtn: {
+            flex: 1, height: 48, borderRadius: 10, alignItems: 'center', justifyContent: 'center',
+            borderWidth: 1, borderColor: colors.border, backgroundColor: colors.backgroundSecondary,
+        },
+        cancelBtnText: { fontSize: 14, fontFamily: F.semibold, color: colors.text },
+        logoutBtn: {
+            flex: 1, height: 48, borderRadius: 10, alignItems: 'center', justifyContent: 'center',
+            backgroundColor: colors.error,
+        },
+        logoutBtnText: { fontSize: 14, fontFamily: F.semibold, color: '#fff' },
+    });
+}

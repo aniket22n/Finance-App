@@ -1,65 +1,47 @@
-import React, { useState, useRef } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
     View, Text, TextInput, TouchableOpacity, StyleSheet,
     KeyboardAvoidingView, Platform, ActivityIndicator, Alert, ScrollView,
 } from 'react-native';
-import * as SecureStore from 'expo-secure-store';
 import { Ionicons } from '@expo/vector-icons';
-import { useAuth } from '../context/AuthContext';
-import { sendOtp, verifyOtp, updateProfile } from '../services/api';
+import { useTheme } from '../context/ThemeContext';
+import { checkPhone, sendOtp } from '../services/api';
+import { apiErrMsg } from '../utils/error';
+import { F } from '../theme';
+import { useInputFocus, focusBorder, webOutlineReset } from '../hooks/useInputFocus';
 
-export default function SignUpScreen({ navigation }) {
-    const { login } = useAuth();
+export default function SignUpScreen({ route, navigation }) {
+    const { colors } = useTheme();
     const [name, setName] = useState('');
-    const [phone, setPhone] = useState('');
-    const [otp, setOtp] = useState('');
-    const [step, setStep] = useState('details'); // 'details' | 'otp'
+    const [phone, setPhone] = useState(route?.params?.phone || '');
+    const [phoneError, setPhoneError] = useState('');
     const [loading, setLoading] = useState(false);
-    const otpRef = useRef(null);
+    const [nameFocused, nameFocusProps] = useInputFocus();
+    const [phoneFocused, phoneFocusProps] = useInputFocus();
+
+    const canSubmit = name.trim().length > 0 && phone.length === 10;
 
     const handleSendOtp = async () => {
-        if (!name.trim()) {
-            Alert.alert('Required', 'Please enter your name');
-            return;
-        }
-        if (phone.length < 10) {
-            Alert.alert('Invalid', 'Enter a valid 10-digit phone number');
-            return;
-        }
+        setPhoneError('');
+        if (!name.trim()) return Alert.alert('Required', 'Enter your full name');
+        if (phone.length !== 10) return Alert.alert('Invalid', 'Enter a valid 10-digit phone number');
         setLoading(true);
         try {
+            const checkRes = await checkPhone(phone);
+            if (checkRes.data.exists) {
+                setPhoneError('This number is already registered. Please log in.');
+                return;
+            }
             await sendOtp(phone);
-            setStep('otp');
-            setTimeout(() => otpRef.current?.focus(), 300);
+            navigation.navigate('SignUpOTP', { phone, name: name.trim() });
         } catch (err) {
-            Alert.alert('Error', err.response?.data?.error || 'Failed to send OTP');
+            Alert.alert('Error', apiErrMsg(err, 'Failed to send OTP'));
         } finally {
             setLoading(false);
         }
     };
 
-    const handleVerify = async () => {
-        if (otp.length < 4) {
-            Alert.alert('Invalid', 'Enter the 4-digit OTP');
-            return;
-        }
-        setLoading(true);
-        try {
-            const res = await verifyOtp(phone, otp);
-            const token = res.data.token;
-            // Store token so the API interceptor can use it for the profile update
-            await SecureStore.setItemAsync('authToken', token);
-            // Set the name on the new account
-            if (name.trim()) {
-                await updateProfile({ name: name.trim() }).catch(() => {});
-            }
-            await login(token, { ...res.data.user, name: name.trim() || res.data.user.name });
-        } catch (err) {
-            Alert.alert('Error', err.response?.data?.error || 'Invalid OTP');
-        } finally {
-            setLoading(false);
-        }
-    };
+    const styles = useMemo(() => makeStyles(colors), [colors]);
 
     return (
         <KeyboardAvoidingView
@@ -67,161 +49,105 @@ export default function SignUpScreen({ navigation }) {
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
             <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-                <TouchableOpacity style={styles.backRow} onPress={() => navigation.goBack()}>
-                    <Ionicons name="arrow-back" size={20} color="#e94560" />
-                    <Text style={styles.backText}>Back to Login</Text>
+                <TouchableOpacity style={styles.backRow} onPress={() => navigation.goBack()} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+                    <Ionicons name="arrow-back" size={22} color={colors.text} />
                 </TouchableOpacity>
 
                 <View style={styles.topSection}>
-                    <View style={styles.logoCircle}>
-                        <Ionicons name="person-add" size={44} color="#e94560" />
-                    </View>
                     <Text style={styles.title}>Create Account</Text>
                     <Text style={styles.subtitle}>Join your EMI group as a member</Text>
                 </View>
 
                 <View style={styles.formSection}>
-                    {step === 'details' ? (
-                        <>
-                            <Text style={styles.label}>Full Name</Text>
-                            <TextInput
-                                style={styles.input}
-                                value={name}
-                                onChangeText={setName}
-                                placeholder="Your full name"
-                                placeholderTextColor="#556677"
-                                autoFocus
-                                returnKeyType="next"
-                            />
+                    <TextInput
+                        style={[styles.input, webOutlineReset, focusBorder(colors, nameFocused)]}
+                        value={name}
+                        onChangeText={setName}
+                        placeholder="Full Name"
+                        placeholderTextColor={colors.textSecondary}
+                        returnKeyType="next"
+                        {...nameFocusProps}
+                    />
 
-                            <Text style={styles.label}>Mobile Number</Text>
-                            <View style={styles.inputRow}>
-                                <View style={styles.prefix}>
-                                    <Text style={styles.prefixText}>+91</Text>
-                                </View>
-                                <TextInput
-                                    style={styles.input}
-                                    value={phone}
-                                    onChangeText={setPhone}
-                                    placeholder="9876543210"
-                                    placeholderTextColor="#556677"
-                                    keyboardType="phone-pad"
-                                    maxLength={10}
-                                />
-                            </View>
+                    <View style={[styles.phoneRow, focusBorder(colors, phoneFocused), { marginTop: 14 }, phoneError && styles.inputError]}>
+                        <Text style={styles.prefixText}>+91</Text>
+                        <View style={styles.prefixDivider} />
+                        <TextInput
+                            style={[styles.phoneInput, webOutlineReset]}
+                            value={phone}
+                            onChangeText={v => { setPhone(v.replace(/\D/g, '').slice(0, 10)); setPhoneError(''); }}
+                            placeholder="9876543210"
+                            placeholderTextColor={colors.textSecondary}
+                            keyboardType="phone-pad"
+                            maxLength={10}
+                            returnKeyType="done"
+                            onSubmitEditing={handleSendOtp}
+                            {...phoneFocusProps}
+                        />
+                    </View>
+                    {phoneError ? (
+                        <View style={styles.errorRow}>
+                            <Ionicons name="alert-circle" size={13} color={colors.error} />
+                            <Text style={styles.errorText}>{phoneError}</Text>
+                        </View>
+                    ) : null}
 
-                            <TouchableOpacity
-                                style={[styles.button, (!name.trim() || phone.length < 10) && styles.buttonDisabled]}
-                                onPress={handleSendOtp}
-                                disabled={loading || !name.trim() || phone.length < 10}
-                            >
-                                {loading ? (
-                                    <ActivityIndicator color="#fff" />
-                                ) : (
-                                    <Text style={styles.buttonText}>Send OTP</Text>
-                                )}
-                            </TouchableOpacity>
-                        </>
-                    ) : (
-                        <>
-                            <Text style={styles.label}>OTP sent to +91 {phone}</Text>
-                            <TextInput
-                                ref={otpRef}
-                                style={[styles.input, styles.otpInput]}
-                                value={otp}
-                                onChangeText={setOtp}
-                                placeholder="1234"
-                                placeholderTextColor="#556677"
-                                keyboardType="number-pad"
-                                maxLength={4}
-                                textAlign="center"
-                            />
-                            <TouchableOpacity
-                                style={[styles.button, otp.length < 4 && styles.buttonDisabled]}
-                                onPress={handleVerify}
-                                disabled={loading || otp.length < 4}
-                            >
-                                {loading ? (
-                                    <ActivityIndicator color="#fff" />
-                                ) : (
-                                    <Text style={styles.buttonText}>Create Account</Text>
-                                )}
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                                style={styles.changeRow}
-                                onPress={() => { setStep('details'); setOtp(''); }}
-                            >
-                                <Text style={styles.changeText}>← Change details</Text>
-                            </TouchableOpacity>
-                        </>
-                    )}
+                    <TouchableOpacity
+                        style={[styles.btnLarge, !canSubmit && styles.btnDisabled]}
+                        onPress={handleSendOtp}
+                        disabled={loading || !canSubmit}
+                        activeOpacity={0.85}
+                    >
+                        {loading
+                            ? <ActivityIndicator color="#fff" />
+                            : <Text style={styles.btnText}>Send OTP</Text>}
+                    </TouchableOpacity>
                 </View>
 
-                <Text style={styles.note}>
-                    Your account will be created as a member.{'\n'}
-                    An admin will add you to your group.
-                </Text>
+                <View style={styles.loginRow}>
+                    <Text style={styles.loginNote}>Already have an account? </Text>
+                    <TouchableOpacity onPress={() => navigation.goBack()}>
+                        <Text style={styles.loginLink}>Log in</Text>
+                    </TouchableOpacity>
+                </View>
             </ScrollView>
         </KeyboardAvoidingView>
     );
 }
 
-const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#1a1a2e' },
-    scroll: { paddingHorizontal: 24, paddingTop: 60, paddingBottom: 40 },
-    backRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 32 },
-    backText: { color: '#e94560', fontSize: 14, marginLeft: 6, fontWeight: '600' },
-    topSection: { alignItems: 'center', marginBottom: 40 },
-    logoCircle: {
-        width: 88,
-        height: 88,
-        borderRadius: 44,
-        backgroundColor: '#0f3460',
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginBottom: 16,
-        borderWidth: 2,
-        borderColor: '#e94560',
-    },
-    title: { color: '#fff', fontSize: 28, fontWeight: '800', letterSpacing: 0.5 },
-    subtitle: { color: '#8899aa', fontSize: 14, marginTop: 6 },
-    formSection: { marginBottom: 24 },
-    label: { color: '#ccc', fontSize: 13, marginBottom: 8, marginTop: 16 },
-    inputRow: { flexDirection: 'row', marginBottom: 4 },
-    prefix: {
-        backgroundColor: '#0f3460',
-        borderRadius: 12,
-        paddingHorizontal: 16,
-        justifyContent: 'center',
-        marginRight: 8,
-        borderWidth: 1,
-        borderColor: '#1a1a4e',
-    },
-    prefixText: { color: '#e94560', fontSize: 16, fontWeight: '700' },
-    input: {
-        flex: 1,
-        backgroundColor: '#0f3460',
-        borderRadius: 12,
-        paddingHorizontal: 16,
-        paddingVertical: 14,
-        color: '#fff',
-        fontSize: 16,
-        fontWeight: '600',
-        borderWidth: 1,
-        borderColor: '#1a1a4e',
-        marginBottom: 4,
-    },
-    otpInput: { fontSize: 28, letterSpacing: 12, paddingVertical: 16, marginBottom: 16 },
-    button: {
-        backgroundColor: '#e94560',
-        borderRadius: 12,
-        paddingVertical: 16,
-        alignItems: 'center',
-        marginTop: 16,
-    },
-    buttonDisabled: { opacity: 0.5 },
-    buttonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-    changeRow: { marginTop: 16, alignItems: 'center' },
-    changeText: { color: '#e94560', fontSize: 14 },
-    note: { color: '#556677', fontSize: 12, textAlign: 'center', lineHeight: 20 },
-});
+function makeStyles(colors) {
+    return StyleSheet.create({
+        container:   { flex: 1, backgroundColor: colors.background },
+        scroll:      { paddingHorizontal: 24, paddingTop: 60, paddingBottom: 90 },
+        backRow:     { width: 40, height: 40, alignItems: 'flex-start', justifyContent: 'center', marginBottom: 16 },
+        topSection:  { alignItems: 'flex-start', marginBottom: 32 },
+        title:       { fontSize: 20, fontFamily: F.bold, color: colors.text, marginBottom: 4 },
+        subtitle:    { fontSize: 13, fontFamily: F.regular, color: colors.textSecondary },
+        formSection: { marginBottom: 24 },
+        input: {
+            height: 56, paddingHorizontal: 16, borderWidth: 1,
+            borderColor: colors.border, borderRadius: 10, fontSize: 14,
+            fontFamily: F.regular, color: colors.text, backgroundColor: colors.backgroundSecondary,
+        },
+        phoneRow: {
+            flexDirection: 'row', alignItems: 'center', height: 56,
+            borderWidth: 1, borderColor: colors.border, borderRadius: 10,
+            backgroundColor: colors.backgroundSecondary,
+        },
+        prefixText:    { fontSize: 15, fontFamily: F.semibold, color: colors.primary, paddingHorizontal: 16 },
+        prefixDivider: { width: 1, height: 24, backgroundColor: colors.border },
+        phoneInput:    { flex: 1, height: 56, paddingHorizontal: 16, fontSize: 14, fontFamily: F.regular, color: colors.text },
+        inputError:    { borderColor: colors.error },
+        errorRow:      { flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 5 },
+        errorText:     { fontSize: 12, fontFamily: F.medium, color: colors.error, flex: 1 },
+        btnLarge: {
+            height: 56, borderRadius: 12, alignItems: 'center', justifyContent: 'center',
+            backgroundColor: colors.primary, elevation: 4, marginTop: 20,
+        },
+        btnDisabled: { backgroundColor: colors.textTertiary, elevation: 0 },
+        btnText:     { fontSize: 14, fontFamily: F.semibold, color: '#FFFFFF' },
+        loginRow:    { flexDirection: 'row', justifyContent: 'center', marginTop: 8 },
+        loginNote:   { fontSize: 13, fontFamily: F.regular, color: colors.textSecondary },
+        loginLink:   { fontSize: 13, fontFamily: F.semibold, color: colors.primary },
+    });
+}
