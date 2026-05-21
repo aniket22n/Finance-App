@@ -58,7 +58,7 @@ export default function SetPINScreen({ route, navigation }) {
             await savePIN(phone, pin);
             if (mode === 'signup') {
                 const res = await signup({ name, phone, otp, pin });
-                await login(res.data.token, res.data.user);
+                navigation.replace('SignupPending', { name: res.data.user.name, phone: res.data.user.phone });
             } else {
                 // Authenticated via OTP — store PIN on backend using the OTP-issued token
                 await setPinApi(phone, pin);

@@ -169,6 +169,7 @@ function makeStyles(colors) {
             borderBottomWidth: 1,
             borderBottomColor: colors.border,
             backgroundColor: colors.background,
+            zIndex: 10,
         },
         title: { fontSize: 20, fontFamily: F.bold, color: colors.text },
 

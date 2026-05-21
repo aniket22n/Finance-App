@@ -323,6 +323,7 @@ function makeStyles(colors) {
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'space-between',
+            zIndex: 10,
         },
         title: { fontSize: 20, fontFamily: F.bold, color: colors.text },
         createBtn: {

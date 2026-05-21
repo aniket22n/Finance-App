@@ -4,8 +4,9 @@ const Group = require('../models/Group');
 const User = require('../models/User');
 const Payment = require('../models/Payment');
 const EMICycle = require('../models/EMICycle');
+const AccountRequest = require('../models/AccountRequest');
 const { auth, adminOnly } = require('../middleware/auth');
-const { sendBulkNotifications } = require('../utils/notifications');
+const { sendBulkNotifications, sendPushNotification } = require('../utils/notifications');
 const config = require('../config/appConfig');
 
 const router = express.Router();
@@ -287,6 +288,87 @@ router.get('/analytics/group-health', auth, adminOnly, async (req, res) => {
         }));
 
         res.json({ groups: health });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/admin/account-requests/pending
+router.get('/account-requests/pending', auth, adminOnly, async (req, res) => {
+    try {
+        const pending = await AccountRequest.find({ status: 'pending' })
+            .sort({ createdAt: -1 })
+            .lean();
+        res.json({ success: true, requests: pending });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/admin/account-requests — all statuses
+router.get('/account-requests', auth, adminOnly, async (req, res) => {
+    try {
+        const { status } = req.query;
+        const filter = status ? { status } : {};
+        const requests = await AccountRequest.find(filter)
+            .populate('reviewedBy', 'name')
+            .sort({ createdAt: -1 })
+            .lean();
+        res.json({ success: true, requests });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/admin/account-requests/:requestId/approve
+router.post('/account-requests/:requestId/approve', auth, adminOnly, async (req, res) => {
+    try {
+        const request = await AccountRequest.findById(req.params.requestId);
+        if (!request) return res.status(404).json({ error: 'Request not found' });
+        if (request.status !== 'pending') {
+            return res.status(400).json({ error: 'Request is no longer pending' });
+        }
+
+        // Check phone not already in User table
+        const exists = await User.findOne({ phone: request.phone });
+        if (exists) return res.status(400).json({ error: 'Phone already registered as a user' });
+
+        // Create approved User from request
+        const user = await User.create({
+            name: request.name,
+            phone: request.phone,
+            pin: request.pin,
+            role: 'member',
+        });
+
+        request.status = 'approved';
+        request.reviewedAt = new Date();
+        request.reviewedBy = req.user._id;
+        await request.save();
+
+        res.json({ success: true, message: 'Account approved', user: { _id: user._id, name: user.name, phone: user.phone } });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/admin/account-requests/:requestId/reject
+router.post('/account-requests/:requestId/reject', auth, adminOnly, async (req, res) => {
+    try {
+        const { reason } = req.body;
+        const request = await AccountRequest.findById(req.params.requestId);
+        if (!request) return res.status(404).json({ error: 'Request not found' });
+        if (request.status !== 'pending') {
+            return res.status(400).json({ error: 'Request is no longer pending' });
+        }
+
+        request.status = 'rejected';
+        request.reviewedAt = new Date();
+        request.reviewedBy = req.user._id;
+        if (reason) request.rejectReason = reason.trim();
+        await request.save();
+
+        res.json({ success: true, message: 'Account request rejected' });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }

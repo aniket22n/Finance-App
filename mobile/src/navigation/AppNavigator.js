@@ -18,6 +18,7 @@ import OTPVerificationScreen from '../screens/OTPVerificationScreen';
 import ForgotPINScreen from '../screens/ForgotPINScreen';
 import ResetPINOTPScreen from '../screens/ResetPINOTPScreen';
 import ResetPINScreen from '../screens/ResetPINScreen';
+import SignupPendingScreen from '../screens/SignupPendingScreen';
 
 // Main screens
 import HomeScreen from '../screens/HomeScreen';
@@ -30,6 +31,7 @@ import AdminGroupsScreen from '../screens/AdminGroupsScreen';
 import AdminPaymentsScreen from '../screens/AdminPaymentsScreen';
 import AdminControlsScreen from '../screens/AdminControlsScreen';
 import AdminPaymentDetailScreen from '../screens/AdminPaymentDetailScreen';
+import AdminAccountRequestsScreen from '../screens/AdminAccountRequestsScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -116,6 +118,11 @@ export default function AppNavigator() {
                             component={AdminPaymentDetailScreen}
                             options={{ headerShown: false }}
                         />
+                        <Stack.Screen
+                            name="AdminAccountRequests"
+                            component={AdminAccountRequestsScreen}
+                            options={{ headerShown: false }}
+                        />
                     </>
                 ) : (
                     <>
@@ -127,6 +134,7 @@ export default function AppNavigator() {
                         <Stack.Screen name="ForgotPIN" component={ForgotPINScreen} />
                         <Stack.Screen name="ResetPINOTP" component={ResetPINOTPScreen} />
                         <Stack.Screen name="ResetPIN" component={ResetPINScreen} />
+                        <Stack.Screen name="SignupPending" component={SignupPendingScreen} />
                     </>
                 )}
             </Stack.Navigator>

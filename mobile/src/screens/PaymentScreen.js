@@ -140,13 +140,15 @@ export default function PaymentScreen() {
     const completedPayments = payments.filter(p => p.status !== 'pending');
 
     return (
-        <ScrollView
-            style={styles.container}
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
-        >
+        <View style={styles.container}>
             <View style={styles.header}>
                 <Text style={styles.headerTitle}>Payments</Text>
             </View>
+
+            <ScrollView
+                style={{ flex: 1 }}
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+            >
 
             {pendingPayments.length > 0 && (
                 <View style={styles.pendingBanner}>
@@ -196,6 +198,7 @@ export default function PaymentScreen() {
             )}
 
             <View style={{ height: 90 }} />
+            </ScrollView>
 
             {/* Payment Method Modal */}
             <Modal
@@ -319,7 +322,7 @@ export default function PaymentScreen() {
                     </View>
                 </View>
             </Modal>
-        </ScrollView>
+        </View>
     );
 }
 
@@ -334,6 +337,7 @@ function makeStyles(colors) {
             paddingBottom: 12,
             borderBottomWidth: 1,
             borderBottomColor: colors.border,
+            zIndex: 10,
         },
         headerTitle:   { fontSize: 20, fontFamily: F.bold, color: colors.text },
         sectionTitle:  { fontSize: 16, fontFamily: F.medium, color: colors.text, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8 },

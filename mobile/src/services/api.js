@@ -105,6 +105,10 @@ export const sendBulkNotification = (data) => api.post('/admin/notify', data);
 export const triggerReminders = () => api.post('/admin/trigger-reminders');
 export const getGroupHealth = () => api.get('/admin/analytics/group-health');
 export const getRevenueAnalytics = () => api.get('/admin/analytics/revenue');
+export const getAccountRequests = (status) => api.get('/admin/account-requests', { params: status ? { status } : {} });
+export const getPendingAccountRequests = () => api.get('/admin/account-requests/pending');
+export const approveAccountRequest = (requestId) => api.post(`/admin/account-requests/${requestId}/approve`);
+export const rejectAccountRequest = (requestId, reason) => api.post(`/admin/account-requests/${requestId}/reject`, { reason });
 
 // ── Payments (admin) ──
 export const getAdminPayments = (status) => api.get('/payments/admin/list', { params: status ? { status } : {} });

@@ -1,6 +1,7 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const AccountRequest = require('../models/AccountRequest');
 const { auth } = require('../middleware/auth');
 const config = require('../config/appConfig');
 const {
@@ -106,15 +107,22 @@ setInterval(() => {
 }, 10 * 60 * 1000);
 
 // GET /api/auth/check-phone?phone=XXXXXXXXXX
-// Returns { exists: true } only when a user with that phone has completed signup (has a name)
+// Returns { exists, pendingRequest } so the mobile can show the right message early
 router.get('/check-phone', async (req, res) => {
     try {
         const { phone } = req.query;
         if (!phone || !/^\d{10}$/.test(phone)) {
             return res.status(400).json({ error: 'Valid 10-digit phone number required' });
         }
-        const user = await User.findOne({ phone, name: { $exists: true, $ne: '' } }).lean();
-        res.json({ exists: !!user });
+        const [user, request] = await Promise.all([
+            User.findOne({ phone, name: { $exists: true, $ne: '' } }).lean(),
+            AccountRequest.findOne({ phone }).lean(),
+        ]);
+        res.json({
+            exists: !!user,
+            pendingRequest: request?.status === 'pending',
+            rejectedRequest: request?.status === 'rejected',
+        });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -352,7 +360,17 @@ router.post('/verify-pin', async (req, res) => {
         }
         const pinStr = String(pin);
         const user = await User.findOne({ phone });
-        if (!user) return res.status(404).json({ error: 'User not found' });
+        if (!user) {
+            // Check AccountRequest for a better error message
+            const request = await AccountRequest.findOne({ phone });
+            if (request?.status === 'pending') {
+                return res.status(403).json({ error: 'Account pending approval. Admin will review your request shortly.' });
+            }
+            if (request?.status === 'rejected') {
+                return res.status(403).json({ error: 'Account request rejected. Please contact admin for assistance.' });
+            }
+            return res.status(404).json({ error: 'User not found' });
+        }
         if (!user.pin) {
             return res.status(400).json({ error: 'PIN not set. Please log in with OTP.' });
         }
@@ -365,22 +383,54 @@ router.post('/verify-pin', async (req, res) => {
     }
 });
 
-// POST /api/auth/signup-with-pin — create account with PIN (after OTP verification)
+// POST /api/auth/signup-with-pin — create AccountRequest with PIN (after OTP verification)
 router.post('/signup-with-pin', signupWithPinValidations, validate, async (req, res) => {
     try {
         const { phone, otp, pin, name } = req.body;
         const pinStr = String(pin);
-        let user = await User.findOne({ phone });
-        if (!user) return res.status(404).json({ error: 'No OTP request found for this phone' });
-        if (!verifyOtpMatch(user, otp)) {
+
+        // Find temp user (created by send-otp) to verify OTP
+        const tempUser = await User.findOne({ phone });
+        if (!tempUser) return res.status(404).json({ error: 'No OTP request found for this phone' });
+        if (!verifyOtpMatch(tempUser, otp)) {
             return res.status(401).json({ error: 'Invalid or expired OTP' });
         }
-        user.name = name.trim();
-        user.pin = pinStr;
-        user.otp = '';
-        user.otpExpiresAt = undefined;
-        await user.save();
-        res.json({ token: issueToken(user), user: userResponse(user) });
+
+        // Block if already a real approved user
+        if (tempUser.name) {
+            return res.status(400).json({ error: 'Phone already registered' });
+        }
+
+        // Block if an AccountRequest already exists for this phone
+        const existing = await AccountRequest.findOne({ phone });
+        if (existing) {
+            if (existing.status === 'pending') {
+                return res.status(400).json({ error: 'Account request already pending. Please wait for admin approval.' });
+            }
+            if (existing.status === 'rejected') {
+                return res.status(400).json({ error: 'Previous request was rejected. Contact admin.' });
+            }
+        }
+
+        // Create AccountRequest
+        const request = await AccountRequest.create({ name: name.trim(), phone, pin: pinStr });
+
+        // Delete temp User (created only for OTP)
+        await User.deleteOne({ _id: tempUser._id });
+
+        // Notify admins
+        const admins = await User.find({ role: 'admin', expoPushToken: { $ne: '' } }).lean();
+        if (admins.length > 0) {
+            const { sendBulkNotifications } = require('../utils/notifications');
+            const tokens = admins.map(a => a.expoPushToken).filter(Boolean);
+            sendBulkNotifications(tokens, 'New Account Request', `${request.name} (${phone}) wants to join`, { type: 'new_request', requestId: String(request._id) }).catch(() => {});
+        }
+
+        res.json({
+            success: true,
+            message: 'Account request submitted. Awaiting admin approval.',
+            user: { name: request.name, phone: request.phone, status: 'pending' },
+        });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }

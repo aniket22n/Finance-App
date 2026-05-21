@@ -46,11 +46,7 @@ function AdminHomeView({ navigation, user, colors }) {
     const styles = useMemo(() => makeStyles(colors), [colors]);
 
     return (
-        <ScrollView
-            style={styles.container}
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
-        >
-            {/* Header */}
+        <View style={styles.container}>
             <View style={styles.header}>
                 <View>
                     <Text style={styles.greeting}>{greeting},</Text>
@@ -60,6 +56,11 @@ function AdminHomeView({ navigation, user, colors }) {
                     <Avatar uri={user?.avatar} name={user?.name} size={46} />
                 </TouchableOpacity>
             </View>
+
+            <ScrollView
+                style={{ flex: 1 }}
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+            >
 
             {/* Gradient Stat Cards */}
             {stats && (
@@ -124,7 +125,8 @@ function AdminHomeView({ navigation, user, colors }) {
             )}
 
             <View style={{ height: 90 }} />
-        </ScrollView>
+            </ScrollView>
+        </View>
     );
 }
 
@@ -156,11 +158,7 @@ function MemberHomeView({ navigation, user, colors }) {
     const styles = useMemo(() => makeStyles(colors), [colors]);
 
     return (
-        <ScrollView
-            style={styles.container}
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
-        >
-            {/* Header */}
+        <View style={styles.container}>
             <View style={styles.header}>
                 <View>
                     <Text style={styles.greeting}>Hi,</Text>
@@ -170,6 +168,11 @@ function MemberHomeView({ navigation, user, colors }) {
                     <Avatar uri={user?.avatar} name={user?.name} size={46} />
                 </TouchableOpacity>
             </View>
+
+            <ScrollView
+                style={{ flex: 1 }}
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+            >
 
             {/* Summary Row */}
             <View style={styles.summaryRow}>
@@ -226,7 +229,8 @@ function MemberHomeView({ navigation, user, colors }) {
             )}
 
             <View style={{ height: 90 }} />
-        </ScrollView>
+            </ScrollView>
+        </View>
     );
 }
 
@@ -290,6 +294,7 @@ function makeStyles(colors) {
             paddingBottom: 12,
             borderBottomWidth: 1,
             borderBottomColor: colors.border,
+            zIndex: 10,
         },
         greeting:     { fontSize: 12, fontFamily: F.regular, color: colors.textSecondary },
         name:         { fontSize: 20, fontFamily: F.bold, color: colors.text, marginTop: 2 },

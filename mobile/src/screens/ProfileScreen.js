@@ -80,12 +80,11 @@ export default function ProfileScreen({ navigation }) {
 
     return (
         <View style={styles.root}>
-            <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 90 }}>
-                {/* Header */}
-                <View style={styles.headerBar}>
-                    <Text style={styles.headerTitle}>Profile</Text>
-                </View>
+            <View style={styles.headerBar}>
+                <Text style={styles.headerTitle}>Profile</Text>
+            </View>
 
+            <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 90 }}>
                 {/* Gradient Profile Card */}
                 <LinearGradient
                     colors={[colors.primary, colors.primaryDark]}
@@ -287,6 +286,7 @@ function makeStyles(colors) {
             paddingBottom: 12,
             borderBottomWidth: 1,
             borderBottomColor: colors.border,
+            zIndex: 10,
         },
         headerTitle: { fontSize: 20, fontFamily: F.bold, color: colors.text },
         profileCard: {

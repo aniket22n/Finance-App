@@ -32,6 +32,14 @@ export default function SignUpScreen({ route, navigation }) {
                 setPhoneError('This number is already registered. Please log in.');
                 return;
             }
+            if (checkRes.data.pendingRequest) {
+                setPhoneError('Account request already submitted. Please wait for admin approval.');
+                return;
+            }
+            if (checkRes.data.rejectedRequest) {
+                setPhoneError('Previous request was rejected. Please contact admin.');
+                return;
+            }
             await sendOtp(phone);
             navigation.navigate('SignUpOTP', { phone, name: name.trim() });
         } catch (err) {

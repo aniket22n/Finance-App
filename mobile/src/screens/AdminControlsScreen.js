@@ -9,6 +9,7 @@ import {
     getGroups, getEligibleMembers, createEmiCycle,
     sendBulkNotification, triggerReminders,
     getAdminUsers, updateUserRole, deleteUser,
+    getPendingAccountRequests,
 } from '../services/api';
 import { useTheme } from '../context/ThemeContext';
 import { F } from '../theme';
@@ -55,9 +56,16 @@ function Sheet({ visible, title, onClose, children, colors }) {
     );
 }
 
-export default function AdminControlsScreen() {
+export default function AdminControlsScreen({ navigation }) {
     const { colors } = useTheme();
     const { toast, show } = useToast();
+    const [pendingCount, setPendingCount] = useState(0);
+
+    useFocusEffect(useCallback(() => {
+        getPendingAccountRequests()
+            .then(res => setPendingCount(res.data.requests?.length || 0))
+            .catch(() => {});
+    }, []));
 
     // ── Create Cycle state ──
     const [showCycle, setShowCycle] = useState(false);
@@ -268,6 +276,15 @@ export default function AdminControlsScreen() {
                 {/* USER MANAGEMENT */}
                 <Text style={styles.sectionTitle}>USER MANAGEMENT</Text>
                 <ActionCard
+                    icon="document-text-outline"
+                    iconBg={colors.warningLight}
+                    iconColor={colors.warning}
+                    title={`Account Requests${pendingCount > 0 ? ` (${pendingCount} pending)` : ''}`}
+                    subtitle="Review and approve new member sign-up requests"
+                    onPress={() => navigation.navigate('AdminAccountRequests')}
+                    colors={colors}
+                />
+                <ActionCard
                     icon="people-outline"
                     iconBg={colors.successLight}
                     iconColor={colors.success}
@@ -467,6 +484,7 @@ function makeStyles(colors) {
             paddingBottom: 12,
             borderBottomWidth: 1,
             borderBottomColor: colors.border,
+            zIndex: 10,
         },
         title:        { fontSize: 20, fontFamily: F.bold, color: colors.text },
         content:      { flex: 1, paddingHorizontal: 16 },

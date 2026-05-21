@@ -79,7 +79,13 @@ export default function LoginScreen({ navigation }) {
             const res = await loginWithPin(phone, pin);
             await login(res.data.token, res.data.user);
         } catch (err) {
-            Alert.alert('Login failed', apiErrMsg(err, 'Could not login'));
+            const status = err?.response?.status;
+            if (status === 403) {
+                const msg = apiErrMsg(err, 'Account not accessible');
+                Alert.alert('Access Denied', msg);
+            } else {
+                Alert.alert('Login failed', apiErrMsg(err, 'Could not login'));
+            }
         } finally {
             setLoading(false);
         }
