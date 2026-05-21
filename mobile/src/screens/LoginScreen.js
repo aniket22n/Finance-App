@@ -6,7 +6,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
-import { sendOtp, checkUserType, loginWithPin } from '../services/api';
+import { sendOtp, checkUserType, loginWithPin, checkPhone } from '../services/api';
 import { verifyPIN } from '../utils/pinStorage';
 import { apiErrMsg } from '../utils/error';
 import { F } from '../theme';
@@ -65,10 +65,41 @@ export default function LoginScreen({ navigation }) {
         }
     };
 
+    // Returns true if phone passes registration check, false if an alert was shown
+    const checkRegistration = async () => {
+        try {
+            const res = await checkPhone(phone);
+            if (res.data.pendingRequest) {
+                Alert.alert('Account Pending', 'Your account is awaiting admin approval.');
+                return false;
+            }
+            if (res.data.rejectedRequest) {
+                Alert.alert('Account Rejected', 'Your account request was rejected. Please contact admin.');
+                return false;
+            }
+            if (!res.data.exists) {
+                Alert.alert(
+                    'Not Registered',
+                    'This number has no account. Would you like to sign up?',
+                    [
+                        { text: 'Cancel', style: 'cancel' },
+                        { text: 'Sign Up', onPress: () => navigation.navigate('SignUp', { phone }) },
+                    ]
+                );
+                return false;
+            }
+            return true;
+        } catch {
+            return true; // allow through if check fails — backend will catch it
+        }
+    };
+
     const handlePinLogin = async () => {
         if (!canSubmitPin) return;
         setLoading(true);
         try {
+            const registered = await checkRegistration();
+            if (!registered) return;
             const valid = await verifyPIN(phone, pin);
             if (!valid) {
                 Alert.alert('Wrong PIN', 'Incorrect PIN. Try again or use OTP.');
@@ -81,8 +112,7 @@ export default function LoginScreen({ navigation }) {
         } catch (err) {
             const status = err?.response?.status;
             if (status === 403) {
-                const msg = apiErrMsg(err, 'Account not accessible');
-                Alert.alert('Access Denied', msg);
+                Alert.alert('Access Denied', apiErrMsg(err, 'Account not accessible'));
             } else {
                 Alert.alert('Login failed', apiErrMsg(err, 'Could not login'));
             }
@@ -95,6 +125,8 @@ export default function LoginScreen({ navigation }) {
         if (!canSubmitOtp) return;
         setLoading(true);
         try {
+            const registered = await checkRegistration();
+            if (!registered) return;
             await sendOtp(phone);
             navigation.navigate('OTPVerification', { phone, purpose: 'login' });
         } catch (err) {

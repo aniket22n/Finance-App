@@ -53,10 +53,6 @@ export default function ResetPINOTPScreen({ route, navigation }) {
 
     const handleVerify = () => {
         if (!canVerify) return;
-        if (otp !== '1234') {
-            Alert.alert('Verification failed', 'Invalid OTP');
-            return;
-        }
         navigation.replace('ResetPIN', { phone, otp });
     };
 

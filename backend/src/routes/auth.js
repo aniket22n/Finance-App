@@ -193,7 +193,17 @@ router.post('/verify-otp', verifyOtpValidations, validate, async (req, res) => {
         const { phone, otp } = req.body;
 
         const user = await User.findOne({ phone });
-        if (!user) return res.status(404).json({ error: 'User not found' });
+        if (!user) {
+            // No User at all — check AccountRequest for a helpful error
+            const request = await AccountRequest.findOne({ phone });
+            if (request?.status === 'pending') {
+                return res.status(403).json({ error: 'Account pending approval. Admin will review your request shortly.' });
+            }
+            if (request?.status === 'rejected') {
+                return res.status(403).json({ error: 'Account request rejected. Please contact admin for assistance.' });
+            }
+            return res.status(404).json({ error: 'No account found. Please sign up first.' });
+        }
 
         // Check OTP
         const validOtp = user.otp === otp && user.otpExpiresAt > new Date();
@@ -201,6 +211,18 @@ router.post('/verify-otp', verifyOtpValidations, validate, async (req, res) => {
 
         if (!validOtp && !devMode) {
             return res.status(401).json({ error: 'Invalid or expired OTP' });
+        }
+
+        // Temp users (created by send-otp, no name yet) are not registered accounts
+        if (!user.name) {
+            const request = await AccountRequest.findOne({ phone });
+            if (request?.status === 'pending') {
+                return res.status(403).json({ error: 'Account pending approval. Admin will review your request shortly.' });
+            }
+            if (request?.status === 'rejected') {
+                return res.status(403).json({ error: 'Account request rejected. Please contact admin for assistance.' });
+            }
+            return res.status(404).json({ error: 'No account found. Please sign up first.' });
         }
 
         // Clear OTP

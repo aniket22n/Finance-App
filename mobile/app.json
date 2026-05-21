@@ -52,7 +52,7 @@
     ],
     "scheme": "emigroup",
     "extra": {
-      "apiBase": "https://android-app-js8f.onrender.com/api",
+      "apiBase": "http://10.139.106.1:5000/api",
       "eas": {
         "projectId": "88876370-cb09-4c1a-bbfd-32d5749f5451"
       }

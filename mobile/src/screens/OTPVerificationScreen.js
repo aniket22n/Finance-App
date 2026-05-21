@@ -56,10 +56,6 @@ export default function OTPVerificationScreen({ route, navigation }) {
 
     const handleVerify = async () => {
         if (!canVerify) return;
-        if (otp !== '1234') {
-            Alert.alert('Verification failed', 'Invalid OTP');
-            return;
-        }
         setLoading(true);
         try {
             if (purpose === 'reset') {
@@ -80,7 +76,22 @@ export default function OTPVerificationScreen({ route, navigation }) {
                 }
             }
         } catch (err) {
-            Alert.alert('Verification failed', apiErrMsg(err, 'Invalid OTP'));
+            const status = err?.response?.status;
+            const msg = apiErrMsg(err, 'Invalid OTP');
+            if (status === 403) {
+                Alert.alert('Access Denied', msg);
+            } else if (status === 404) {
+                Alert.alert(
+                    'No Account Found',
+                    'This phone number is not registered. Would you like to create an account?',
+                    [
+                        { text: 'Cancel', style: 'cancel' },
+                        { text: 'Sign Up', onPress: () => navigation.replace('SignUp', { phone }) },
+                    ]
+                );
+            } else {
+                Alert.alert('Verification failed', msg);
+            }
         } finally {
             setLoading(false);
         }

@@ -55,10 +55,6 @@ export default function SignUpOTPScreen({ route, navigation }) {
 
     const handleVerify = () => {
         if (!canVerify) return;
-        if (otp !== '1234') {
-            Alert.alert('Verification failed', 'Invalid OTP');
-            return;
-        }
         navigation.navigate('SetPIN', { phone, otp, name: route.params?.name, mode: 'signup' });
     };
 
