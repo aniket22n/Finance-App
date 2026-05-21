@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import {
     View, Text, ScrollView, TouchableOpacity, StyleSheet, TextInput,
     Modal, ActivityIndicator, Alert,
@@ -12,11 +12,12 @@ import {
 } from '../services/api';
 import { useTheme } from '../context/ThemeContext';
 import { F } from '../theme';
+import { useInputFocus, focusBorder, webOutlineReset } from '../hooks/useInputFocus';
 import Toast, { useToast } from '../components/Toast';
 
 // ── Small reusable card ──
 function ActionCard({ icon, iconBg, iconColor, title, subtitle, onPress, colors }) {
-    const styles = makeStyles(colors);
+    const styles = useMemo(() => makeStyles(colors), [colors]);
     return (
         <TouchableOpacity style={styles.actionCard} onPress={onPress} activeOpacity={0.75}>
             <View style={styles.actionCardLeft}>
@@ -35,7 +36,7 @@ function ActionCard({ icon, iconBg, iconColor, title, subtitle, onPress, colors 
 
 // ── Modal shell ──
 function Sheet({ visible, title, onClose, children, colors }) {
-    const styles = makeStyles(colors);
+    const styles = useMemo(() => makeStyles(colors), [colors]);
     return (
         <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
             <View style={styles.overlay}>
@@ -79,6 +80,9 @@ export default function AdminControlsScreen() {
     const [showUsers, setShowUsers] = useState(false);
     const [users, setUsers] = useState([]);
     const [userSearch, setUserSearch] = useState('');
+    const [titleFocused, titleFocusProps] = useInputFocus();
+    const [bodyFocused, bodyFocusProps] = useInputFocus();
+    const [userSearchFocused, userSearchFocusProps] = useInputFocus();
     const [loadingUsers, setLoadingUsers] = useState(false);
     const [updatingUser, setUpdatingUser] = useState({});
 
@@ -218,7 +222,7 @@ export default function AdminControlsScreen() {
         u.phone?.includes(userSearch)
     );
 
-    const styles = makeStyles(colors);
+    const styles = useMemo(() => makeStyles(colors), [colors]);
 
     return (
         <View style={styles.root}>
@@ -349,18 +353,19 @@ export default function AdminControlsScreen() {
             <Sheet visible={showNotify} title="Send Notification" onClose={() => setShowNotify(false)} colors={colors}>
                 <View style={styles.field}>
                     <Text style={styles.fieldLabel}>Title *</Text>
-                    <TextInput style={styles.fieldInput} value={notifyTitle} onChangeText={setNotifyTitle} placeholder="e.g. EMI Reminder" placeholderTextColor={colors.textSecondary} />
+                    <TextInput style={[styles.fieldInput, webOutlineReset, focusBorder(colors, titleFocused)]} value={notifyTitle} onChangeText={setNotifyTitle} placeholder="e.g. EMI Reminder" placeholderTextColor={colors.textSecondary} {...titleFocusProps} />
                 </View>
                 <View style={styles.field}>
                     <Text style={styles.fieldLabel}>Message * (max 160 chars)</Text>
                     <TextInput
-                        style={[styles.fieldInput, styles.textarea]}
+                        style={[styles.fieldInput, styles.textarea, webOutlineReset, focusBorder(colors, bodyFocused)]}
                         value={notifyBody}
                         onChangeText={v => setNotifyBody(v.slice(0, 160))}
                         placeholder="Your message here…"
                         placeholderTextColor={colors.textSecondary}
                         multiline
                         numberOfLines={3}
+                        {...bodyFocusProps}
                     />
                     <Text style={styles.charCount}>{notifyBody.length}/160</Text>
                 </View>
@@ -396,14 +401,15 @@ export default function AdminControlsScreen() {
 
             {/* User Management Modal */}
             <Sheet visible={showUsers} title="User Management" onClose={() => setShowUsers(false)} colors={colors}>
-                <View style={styles.searchWrap}>
+                <View style={[styles.searchWrap, focusBorder(colors, userSearchFocused)]}>
                     <Ionicons name="search" size={14} color={colors.textSecondary} style={{ marginRight: 6 }} />
                     <TextInput
-                        style={styles.searchInput}
+                        style={[styles.searchInput, webOutlineReset]}
                         value={userSearch}
                         onChangeText={setUserSearch}
                         placeholder="Search name or phone…"
                         placeholderTextColor={colors.textSecondary}
+                        {...userSearchFocusProps}
                     />
                 </View>
                 <ScrollView style={styles.userList} showsVerticalScrollIndicator={false}>
@@ -456,9 +462,9 @@ function makeStyles(colors) {
         root: { flex: 1, backgroundColor: colors.backgroundSecondary },
         header: {
             backgroundColor: colors.background,
-            paddingHorizontal: 20,
-            paddingTop: 60,
-            paddingBottom: 16,
+            paddingHorizontal: 16,
+            paddingTop: 56,
+            paddingBottom: 12,
             borderBottomWidth: 1,
             borderBottomColor: colors.border,
         },
@@ -552,7 +558,7 @@ function makeStyles(colors) {
             fontSize: 14,
             fontFamily: F.regular,
             color: colors.text,
-            backgroundColor: colors.background,
+            backgroundColor: colors.backgroundSecondary,
         },
         textarea:    { height: 80, textAlignVertical: 'top', paddingTop: 12 },
         charCount:   { fontSize: 11, fontFamily: F.regular, color: colors.textSecondary, textAlign: 'right', marginTop: 4 },

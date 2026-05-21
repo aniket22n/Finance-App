@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import { View, Text, FlatList, RefreshControl, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -34,7 +34,7 @@ export default function GroupListScreen({ navigation }) {
         setRefreshing(false);
     };
 
-    const styles = makeStyles(colors);
+    const styles = useMemo(() => makeStyles(colors), [colors]);
 
     if (loading) {
         return (
@@ -85,16 +85,16 @@ function makeStyles(colors) {
         center:    { flex: 1, backgroundColor: colors.backgroundSecondary, alignItems: 'center', justifyContent: 'center' },
         header: {
             backgroundColor: colors.background,
-            paddingHorizontal: 20,
-            paddingTop: 60,
-            paddingBottom: 16,
+            paddingHorizontal: 16,
+            paddingTop: 56,
+            paddingBottom: 12,
             borderBottomWidth: 1,
             borderBottomColor: colors.border,
             flexDirection: 'row',
-            alignItems: 'flex-end',
+            alignItems: 'center',
             justifyContent: 'space-between',
         },
-        title:    { fontSize: 24, fontFamily: F.semibold, color: colors.text },
+        title:    { fontSize: 20, fontFamily: F.bold, color: colors.text },
         count:    { fontSize: 14, fontFamily: F.regular, color: colors.textSecondary, marginBottom: 2 },
         list:     { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 90 },
         emptyBox: {

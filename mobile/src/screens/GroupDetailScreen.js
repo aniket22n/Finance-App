@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import {
     View, Text, ScrollView, ActivityIndicator, StyleSheet,
     RefreshControl, TouchableOpacity, Modal, TextInput, Alert, FlatList,
@@ -14,6 +14,7 @@ import MemberCard from '../components/MemberCard';
 import ProgressRing from '../components/ProgressRing';
 import Toast, { useToast } from '../components/Toast';
 import { F } from '../theme';
+import { useInputFocus, focusBorder, webOutlineReset } from '../hooks/useInputFocus';
 
 function getStatusBadge(type, colors) {
     const map = {
@@ -60,6 +61,8 @@ export default function GroupDetailScreen({ route, navigation }) {
     const [verifyingOtp, setVerifyingOtp] = useState(false);
 
     const { toast, show } = useToast();
+    const [otpFocused, otpFocusProps] = useInputFocus();
+    const [memberSearchFocused, memberSearchFocusProps] = useInputFocus();
 
     const loadData = async () => {
         try {
@@ -167,7 +170,7 @@ export default function GroupDetailScreen({ route, navigation }) {
         }
     };
 
-    const styles = makeStyles(colors);
+    const styles = useMemo(() => makeStyles(colors), [colors]);
 
     if (loading) {
         return (
@@ -352,13 +355,14 @@ export default function GroupDetailScreen({ route, navigation }) {
                         </Text>
 
                         <TextInput
-                            style={[styles.otpInput, otpError && styles.otpInputError]}
+                            style={[styles.otpInput, webOutlineReset, focusBorder(colors, otpFocused), otpError && styles.otpInputError]}
                             value={otpCode}
                             onChangeText={v => { setOtpCode(v); setOtpError(''); }}
                             placeholder="Enter OTP"
                             placeholderTextColor={colors.textSecondary}
                             keyboardType="number-pad"
                             maxLength={6}
+                            {...otpFocusProps}
                             autoFocus
                             textAlign="center"
                         />
@@ -400,15 +404,16 @@ export default function GroupDetailScreen({ route, navigation }) {
                             </TouchableOpacity>
                         </View>
 
-                        <View style={styles.searchRow}>
+                        <View style={[styles.searchRow, focusBorder(colors, memberSearchFocused)]}>
                             <Ionicons name="search" size={16} color={colors.textSecondary} style={{ marginRight: 8 }} />
                             <TextInput
-                                style={styles.searchInput}
+                                style={[styles.searchInput, webOutlineReset]}
                                 value={memberSearch}
                                 onChangeText={setMemberSearch}
                                 placeholder="Search by name or phone..."
                                 placeholderTextColor={colors.textSecondary}
                                 autoFocus
+                                {...memberSearchFocusProps}
                             />
                             {memberSearch ? (
                                 <TouchableOpacity onPress={() => setMemberSearch('')}>
@@ -573,7 +578,7 @@ function makeStyles(colors) {
         otpTitle:   { fontSize: 18, fontFamily: F.bold, color: colors.text, marginBottom: 8 },
         otpSub:     { fontSize: 13, fontFamily: F.regular, color: colors.textSecondary, textAlign: 'center', marginBottom: 20, lineHeight: 20 },
         otpInput: {
-            width: '100%', height: 56, borderRadius: 12, borderWidth: 1.5,
+            width: '100%', height: 56, borderRadius: 12, borderWidth: 1,
             borderColor: colors.border, backgroundColor: colors.backgroundSecondary,
             fontSize: 22, fontFamily: F.bold, color: colors.text,
             letterSpacing: 8, textAlign: 'center', marginBottom: 4,

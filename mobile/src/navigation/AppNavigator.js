@@ -8,8 +8,18 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { F } from '../theme';
+
+// Auth screens
 import LoginScreen from '../screens/LoginScreen';
 import SignUpScreen from '../screens/SignUpScreen';
+import SignUpOTPScreen from '../screens/SignUpOTPScreen';
+import SetPINScreen from '../screens/SetPINScreen';
+import OTPVerificationScreen from '../screens/OTPVerificationScreen';
+import ForgotPINScreen from '../screens/ForgotPINScreen';
+import ResetPINOTPScreen from '../screens/ResetPINOTPScreen';
+import ResetPINScreen from '../screens/ResetPINScreen';
+
+// Main screens
 import HomeScreen from '../screens/HomeScreen';
 import GroupListScreen from '../screens/GroupListScreen';
 import GroupDetailScreen from '../screens/GroupDetailScreen';
@@ -19,6 +29,7 @@ import AdminDashboardScreen from '../screens/AdminDashboardScreen';
 import AdminGroupsScreen from '../screens/AdminGroupsScreen';
 import AdminPaymentsScreen from '../screens/AdminPaymentsScreen';
 import AdminControlsScreen from '../screens/AdminControlsScreen';
+import AdminPaymentDetailScreen from '../screens/AdminPaymentDetailScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -57,9 +68,7 @@ function MainTabs() {
             <Tab.Screen name="Home" component={isAdmin ? AdminDashboardScreen : HomeScreen} />
             <Tab.Screen name="Groups" component={isAdmin ? AdminGroupsScreen : GroupListScreen} />
             <Tab.Screen name="Payments" component={isAdmin ? AdminPaymentsScreen : PaymentScreen} />
-            {isAdmin && (
-                <Tab.Screen name="Admin" component={AdminControlsScreen} />
-            )}
+            {isAdmin && <Tab.Screen name="Admin" component={AdminControlsScreen} />}
             <Tab.Screen name="Profile" component={ProfileScreen} />
         </Tab.Navigator>
     );
@@ -102,11 +111,22 @@ export default function AppNavigator() {
                                 headerBackTitle: '',
                             }}
                         />
+                        <Stack.Screen
+                            name="AdminPaymentDetail"
+                            component={AdminPaymentDetailScreen}
+                            options={{ headerShown: false }}
+                        />
                     </>
                 ) : (
                     <>
                         <Stack.Screen name="Login" component={LoginScreen} />
                         <Stack.Screen name="SignUp" component={SignUpScreen} />
+                        <Stack.Screen name="SignUpOTP" component={SignUpOTPScreen} />
+                        <Stack.Screen name="SetPIN" component={SetPINScreen} />
+                        <Stack.Screen name="OTPVerification" component={OTPVerificationScreen} />
+                        <Stack.Screen name="ForgotPIN" component={ForgotPINScreen} />
+                        <Stack.Screen name="ResetPINOTP" component={ResetPINOTPScreen} />
+                        <Stack.Screen name="ResetPIN" component={ResetPINScreen} />
                     </>
                 )}
             </Stack.Navigator>

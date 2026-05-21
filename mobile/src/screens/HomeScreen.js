@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import {
     View, Text, ScrollView, RefreshControl, TouchableOpacity,
     StyleSheet, ActivityIndicator,
@@ -43,7 +43,7 @@ function AdminHomeView({ navigation, user, colors }) {
 
     const hour = new Date().getHours();
     const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
-    const styles = makeStyles(colors);
+    const styles = useMemo(() => makeStyles(colors), [colors]);
 
     return (
         <ScrollView
@@ -153,7 +153,7 @@ function MemberHomeView({ navigation, user, colors }) {
 
     const activeGroups = groups.filter(g => g.status === 'active');
     const totalPot = activeGroups.reduce((sum, g) => sum + (g.potAmount || 0), 0);
-    const styles = makeStyles(colors);
+    const styles = useMemo(() => makeStyles(colors), [colors]);
 
     return (
         <ScrollView
@@ -285,14 +285,14 @@ function makeStyles(colors) {
             justifyContent: 'space-between',
             alignItems: 'center',
             backgroundColor: colors.background,
-            paddingHorizontal: 20,
-            paddingTop: 60,
-            paddingBottom: 20,
+            paddingHorizontal: 16,
+            paddingTop: 56,
+            paddingBottom: 12,
             borderBottomWidth: 1,
             borderBottomColor: colors.border,
         },
-        greeting:     { fontSize: 14, fontFamily: F.regular, color: colors.textSecondary },
-        name:         { fontSize: 20, fontFamily: F.semibold, color: colors.text, marginTop: 2 },
+        greeting:     { fontSize: 12, fontFamily: F.regular, color: colors.textSecondary },
+        name:         { fontSize: 20, fontFamily: F.bold, color: colors.text, marginTop: 2 },
         sectionTitle: { fontSize: 16, fontFamily: F.medium, color: colors.text, paddingHorizontal: 20, paddingTop: 20, paddingBottom: 12 },
         // Admin stat grid
         statGrid:     { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 16, paddingTop: 16, gap: 8 },

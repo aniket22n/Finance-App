@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
     View, Text, ScrollView, TouchableOpacity, StyleSheet,
     TextInput, Modal, ActivityIndicator, Alert,
@@ -12,9 +12,10 @@ import { updateProfile } from '../services/api';
 import { F } from '../theme';
 import { PRIMARY_COLORS, AVAILABLE_THEMES } from '../theme/colors';
 import Toast, { useToast } from '../components/Toast';
+import { useInputFocus, focusBorder, webOutlineReset } from '../hooks/useInputFocus';
 
 function MenuItem({ icon, label, onPress, danger, colors }) {
-    const styles = makeStyles(colors);
+    const styles = useMemo(() => makeStyles(colors), [colors]);
     return (
         <TouchableOpacity style={styles.menuItem} onPress={onPress} activeOpacity={0.7}>
             <Ionicons name={icon} size={18} color={danger ? colors.error : colors.text} style={{ marginRight: 12 }} />
@@ -32,6 +33,8 @@ export default function ProfileScreen({ navigation }) {
     const [email, setEmail] = useState(user?.email || '');
     const [saving, setSaving] = useState(false);
     const { toast, show } = useToast();
+    const [nameFocused, nameFocusProps] = useInputFocus();
+    const [emailFocused, emailFocusProps] = useInputFocus();
 
     const isAdmin = user?.role === 'admin';
     const initials = (user?.name || user?.phone || 'U').charAt(0).toUpperCase();
@@ -73,7 +76,7 @@ export default function ProfileScreen({ navigation }) {
 
     const handleLogout = () => setConfirmLogout(true);
 
-    const styles = makeStyles(colors);
+    const styles = useMemo(() => makeStyles(colors), [colors]);
 
     return (
         <View style={styles.root}>
@@ -207,24 +210,26 @@ export default function ProfileScreen({ navigation }) {
                         <View style={styles.field}>
                             <Text style={styles.fieldLabel}>Full Name</Text>
                             <TextInput
-                                style={styles.input}
+                                style={[styles.input, webOutlineReset, focusBorder(colors, nameFocused)]}
                                 value={name}
                                 onChangeText={setName}
                                 placeholder="Your full name"
                                 placeholderTextColor={colors.textSecondary}
                                 autoFocus
+                                {...nameFocusProps}
                             />
                         </View>
                         <View style={styles.field}>
                             <Text style={styles.fieldLabel}>Email</Text>
                             <TextInput
-                                style={styles.input}
+                                style={[styles.input, webOutlineReset, focusBorder(colors, emailFocused)]}
                                 value={email}
                                 onChangeText={setEmail}
                                 placeholder="your@email.com"
                                 placeholderTextColor={colors.textSecondary}
                                 keyboardType="email-address"
                                 autoCapitalize="none"
+                                {...emailFocusProps}
                             />
                         </View>
                         <View style={styles.field}>
@@ -277,9 +282,9 @@ function makeStyles(colors) {
         container:   { flex: 1, backgroundColor: colors.backgroundSecondary },
         headerBar: {
             backgroundColor: colors.background,
-            paddingHorizontal: 20,
-            paddingTop: 60,
-            paddingBottom: 16,
+            paddingHorizontal: 16,
+            paddingTop: 56,
+            paddingBottom: 12,
             borderBottomWidth: 1,
             borderBottomColor: colors.border,
         },
@@ -420,7 +425,7 @@ function makeStyles(colors) {
             fontSize: 14,
             fontFamily: F.regular,
             color: colors.text,
-            backgroundColor: colors.background,
+            backgroundColor: colors.backgroundSecondary,
         },
         disabledInput: { backgroundColor: colors.backgroundSecondary, justifyContent: 'center' },
         disabledText:  { fontSize: 14, fontFamily: F.regular, color: colors.textSecondary },

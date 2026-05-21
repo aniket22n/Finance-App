@@ -65,8 +65,15 @@ api.interceptors.response.use(
 
 // ── Auth ──
 export const checkPhone = (phone) => api.get('/auth/check-phone', { params: { phone } });
+export const checkUserType = (phone) => api.post('/auth/check-user-type', { phone });
 export const sendOtp = (phone) => api.post('/auth/send-otp', { phone });
 export const verifyOtp = (phone, otp) => api.post('/auth/verify-otp', { phone, otp });
+export const loginWithPin = (phone, pin) => api.post('/auth/verify-pin', { phone, pin });
+export const signup = (data) => api.post('/auth/signup-with-pin', data);
+export const setPin = (phone, pin) => api.post('/auth/set-pin', { phone, pin });
+export const hasPin = (phone) => api.post('/auth/has-pin', { phone });
+export const resetPin = (phone, pin) => api.post('/auth/update-pin', { phone, newPin: pin });
+export const forgotPassword = (phone) => api.post('/auth/forgot-password', { phone });
 export const updateProfile = (data) => api.put('/auth/profile', data);
 export const getMe = () => api.get('/auth/me');
 

@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import {
     View, Text, ScrollView, TouchableOpacity, StyleSheet, TextInput,
     Modal, ActivityIndicator, Alert, RefreshControl,
@@ -9,6 +9,28 @@ import { getGroups, createGroup, updateGroup, deleteGroup } from '../services/ap
 import { useTheme } from '../context/ThemeContext';
 import { F } from '../theme';
 import Toast, { useToast } from '../components/Toast';
+import { useInputFocus, focusBorder, webOutlineReset } from '../hooks/useInputFocus';
+
+function FormField({ label, value, onChangeText, placeholder, keyboard, prefix, styles, colors }) {
+    const [focused, focusProps] = useInputFocus();
+    return (
+        <View style={styles.field}>
+            <Text style={styles.fieldLabel}>{label}</Text>
+            <View style={[styles.inputWrap, focusBorder(colors, focused)]}>
+                {prefix ? <Text style={styles.inputPrefix}>{prefix}</Text> : null}
+                <TextInput
+                    style={[styles.input, webOutlineReset, prefix && { paddingLeft: 8 }]}
+                    value={value}
+                    onChangeText={onChangeText}
+                    placeholder={placeholder}
+                    placeholderTextColor={colors.textSecondary}
+                    keyboardType={keyboard}
+                    {...focusProps}
+                />
+            </View>
+        </View>
+    );
+}
 
 const EMPTY_FORM = { name: '', emiAmount: '', reducedEmi: '', maxMembers: '', dueDate: '' };
 
@@ -133,12 +155,13 @@ export default function AdminGroupsScreen({ navigation }) {
     };
 
     const setField = (key, value) => setForm(prev => ({ ...prev, [key]: value }));
+    const [searchFocused, searchFocusProps] = useInputFocus();
 
     const filtered = search
         ? groups.filter(g => g.name?.toLowerCase().includes(search.toLowerCase()))
         : groups;
 
-    const styles = makeStyles(colors);
+    const styles = useMemo(() => makeStyles(colors), [colors]);
 
     return (
         <View style={styles.root}>
@@ -151,14 +174,15 @@ export default function AdminGroupsScreen({ navigation }) {
             </View>
 
             {/* Search */}
-            <View style={styles.searchWrap}>
+            <View style={[styles.searchWrap, focusBorder(colors, searchFocused)]}>
                 <Ionicons name="search" size={16} color={colors.textSecondary} style={{ marginRight: 8 }} />
                 <TextInput
-                    style={styles.searchInput}
+                    style={[styles.searchInput, webOutlineReset]}
                     value={search}
                     onChangeText={setSearch}
                     placeholder="Search groups..."
                     placeholderTextColor={colors.textSecondary}
+                    {...searchFocusProps}
                 />
                 {search ? (
                     <TouchableOpacity onPress={() => setSearch('')}>
@@ -228,27 +252,22 @@ export default function AdminGroupsScreen({ navigation }) {
                         <ScrollView showsVerticalScrollIndicator={false}>
                             {[
                                 { key: 'name',       label: 'Group Name',             placeholder: 'e.g. Alpha Chit Fund',   keyboard: 'default' },
-                                { key: 'emiAmount',  label: 'Amount per month (₹)',    placeholder: '5000',                   keyboard: 'numeric' },
-                                { key: 'reducedEmi', label: "Winner's Reduced EMI (₹)", placeholder: '2500',                  keyboard: 'numeric' },
+                                { key: 'emiAmount',  label: 'Amount per month (₹)',    placeholder: '5000',                   keyboard: 'numeric', prefix: '₹' },
+                                { key: 'reducedEmi', label: "Winner's Reduced EMI (₹)", placeholder: '2500',                  keyboard: 'numeric', prefix: '₹' },
                                 { key: 'maxMembers', label: 'Number of members',       placeholder: '20',                     keyboard: 'numeric' },
                                 { key: 'dueDate',    label: 'Due date (day of month)',  placeholder: '5',                     keyboard: 'numeric' },
-                            ].map(({ key, label, placeholder, keyboard }) => (
-                                <View key={key} style={styles.field}>
-                                    <Text style={styles.fieldLabel}>{label}</Text>
-                                    <View style={styles.inputWrap}>
-                                        {key === 'emiAmount' || key === 'reducedEmi' ? (
-                                            <Text style={styles.inputPrefix}>₹</Text>
-                                        ) : null}
-                                        <TextInput
-                                            style={[styles.input, (key === 'emiAmount' || key === 'reducedEmi') && { paddingLeft: 8 }]}
-                                            value={form[key]}
-                                            onChangeText={v => setField(key, v)}
-                                            placeholder={placeholder}
-                                            placeholderTextColor={colors.textSecondary}
-                                            keyboardType={keyboard}
-                                        />
-                                    </View>
-                                </View>
+                            ].map(({ key, label, placeholder, keyboard, prefix }) => (
+                                <FormField
+                                    key={key}
+                                    label={label}
+                                    value={form[key]}
+                                    onChangeText={v => setField(key, v)}
+                                    placeholder={placeholder}
+                                    keyboard={keyboard}
+                                    prefix={prefix}
+                                    styles={styles}
+                                    colors={colors}
+                                />
                             ))}
 
                             {!editTarget && (
@@ -296,16 +315,16 @@ function makeStyles(colors) {
         root: { flex: 1, backgroundColor: colors.backgroundSecondary },
         header: {
             backgroundColor: colors.background,
-            paddingHorizontal: 20,
-            paddingTop: 60,
-            paddingBottom: 16,
+            paddingHorizontal: 16,
+            paddingTop: 56,
+            paddingBottom: 12,
             borderBottomWidth: 1,
             borderBottomColor: colors.border,
             flexDirection: 'row',
-            alignItems: 'flex-end',
+            alignItems: 'center',
             justifyContent: 'space-between',
         },
-        title: { fontSize: 24, fontFamily: F.semibold, color: colors.text },
+        title: { fontSize: 20, fontFamily: F.bold, color: colors.text },
         createBtn: {
             width: 48,
             height: 48,
@@ -322,7 +341,7 @@ function makeStyles(colors) {
         searchWrap: {
             flexDirection: 'row',
             alignItems: 'center',
-            backgroundColor: colors.background,
+            backgroundColor: colors.backgroundSecondary,
             marginHorizontal: 16,
             marginTop: 12,
             borderRadius: 10,
@@ -409,7 +428,7 @@ function makeStyles(colors) {
             borderWidth: 1,
             borderColor: colors.border,
             borderRadius: 10,
-            backgroundColor: colors.background,
+            backgroundColor: colors.backgroundSecondary,
             height: 56,
             paddingHorizontal: 14,
         },

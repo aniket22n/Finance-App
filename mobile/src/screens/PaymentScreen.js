@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import {
     View, Text, ScrollView, TouchableOpacity, Alert, Linking,
     StyleSheet, RefreshControl, ActivityIndicator, Modal, TextInput, Image,
@@ -11,6 +11,7 @@ import { useTheme } from '../context/ThemeContext';
 import { getUserPayments, getGroups, initiatePayment, getPaymentConfig } from '../services/api';
 import PaymentCard from '../components/PaymentCard';
 import { F } from '../theme';
+import { useInputFocus, focusBorder, webOutlineReset } from '../hooks/useInputFocus';
 
 const buildMethods = (colors) => [
     { id: 'upi',   icon: 'qr-code',   color: colors.success, label: 'UPI',            sub: 'GPay, PhonePe, Paytm — 0% fee' },
@@ -34,6 +35,7 @@ export default function PaymentScreen() {
     const [utrNumber, setUtrNumber] = useState('');
     const [receiptBase64, setReceiptBase64] = useState(null);
     const [submitting, setSubmitting] = useState(false);
+    const [utrFocused, utrFocusProps] = useInputFocus();
 
     const loadData = async () => {
         try {
@@ -128,7 +130,7 @@ export default function PaymentScreen() {
         }
     };
 
-    const styles = makeStyles(colors);
+    const styles = useMemo(() => makeStyles(colors), [colors]);
 
     if (loading) {
         return <View style={styles.center}><ActivityIndicator size="large" color={colors.primary} /></View>;
@@ -262,11 +264,12 @@ export default function PaymentScreen() {
                                         </View>
                                         <Text style={styles.infoLabel}>UTR / Reference Number</Text>
                                         <TextInput
-                                            style={styles.textInput}
+                                            style={[styles.textInput, webOutlineReset, focusBorder(colors, utrFocused)]}
                                             placeholder="Enter transaction reference"
                                             placeholderTextColor={colors.textSecondary}
                                             value={utrNumber}
                                             onChangeText={setUtrNumber}
+                                            {...utrFocusProps}
                                         />
                                     </>
                                 )}
@@ -326,13 +329,13 @@ function makeStyles(colors) {
         center:    { flex: 1, backgroundColor: colors.backgroundSecondary, alignItems: 'center', justifyContent: 'center' },
         header: {
             backgroundColor: colors.background,
-            paddingHorizontal: 20,
-            paddingTop: 60,
-            paddingBottom: 16,
+            paddingHorizontal: 16,
+            paddingTop: 56,
+            paddingBottom: 12,
             borderBottomWidth: 1,
             borderBottomColor: colors.border,
         },
-        headerTitle:   { fontSize: 24, fontFamily: F.semibold, color: colors.text },
+        headerTitle:   { fontSize: 20, fontFamily: F.bold, color: colors.text },
         sectionTitle:  { fontSize: 16, fontFamily: F.medium, color: colors.text, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8 },
         pendingBanner: {
             flexDirection: 'row',
@@ -452,7 +455,7 @@ function makeStyles(colors) {
             fontSize: 14,
             fontFamily: F.regular,
             color: colors.text,
-            backgroundColor: colors.background,
+            backgroundColor: colors.backgroundSecondary,
             marginBottom: 8,
         },
         infoBox: {

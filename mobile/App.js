@@ -3,7 +3,7 @@ import { View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { registerRootComponent } from 'expo';
 import * as SplashScreen from 'expo-splash-screen';
-import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
 import {
     useFonts,
     Poppins_400Regular,
@@ -20,15 +20,20 @@ function ThemedStatusBar() {
     return <StatusBar style={isDark ? 'light' : 'dark'} />;
 }
 
+const isExpoGo = Constants.executionEnvironment === 'storeClient';
+
 SplashScreen.preventAutoHideAsync();
 
-Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-        shouldShowAlert: true,
-        shouldPlaySound: true,
-        shouldSetBadge: true,
-    }),
-});
+if (!isExpoGo) {
+    const Notifications = require('expo-notifications');
+    Notifications.setNotificationHandler({
+        handleNotification: async () => ({
+            shouldShowAlert: true,
+            shouldPlaySound: true,
+            shouldSetBadge: true,
+        }),
+    });
+}
 
 function App() {
     const [fontsLoaded, fontError] = useFonts({
@@ -45,11 +50,13 @@ function App() {
     }, [fontsLoaded, fontError]);
 
     useEffect(() => {
+        if (isExpoGo) return; // Push notifications unsupported in Expo Go since SDK 53
         registerForPushNotifications();
     }, []);
 
     const registerForPushNotifications = async () => {
         try {
+            const Notifications = require('expo-notifications');
             const { status: existing } = await Notifications.getPermissionsAsync();
             let finalStatus = existing;
             if (existing !== 'granted') {
