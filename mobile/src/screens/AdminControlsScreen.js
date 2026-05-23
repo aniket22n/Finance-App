@@ -6,7 +6,7 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import {
-    getGroups, getEligibleMembers, createEmiCycle,
+    getGroups, getEligibleMembers, createEmiCycle, getPlannedWinner,
     sendBulkNotification, triggerReminders,
     getAdminUsers, updateUserRole, deleteUser,
     getPendingAccountRequests,
@@ -76,6 +76,8 @@ export default function AdminControlsScreen({ navigation }) {
     const [winnerId, setWinnerId] = useState('');
     const [loadingEligible, setLoadingEligible] = useState(false);
     const [creatingCycle, setCreatingCycle] = useState(false);
+    const [plannedWinnerId, setPlannedWinnerId] = useState(null);
+    const [plannedNextMonth, setPlannedNextMonth] = useState(null);
 
     // ── Bulk Notify state ──
     const [showNotify, setShowNotify] = useState(false);
@@ -99,14 +101,34 @@ export default function AdminControlsScreen({ navigation }) {
     }, []));
 
     // ── Cycle handlers ──
-    const openCycle = () => { setCycleStep(1); setCycleGroupId(''); setEligible([]); setWinnerId(''); setShowCycle(true); };
+    const openCycle = () => {
+        setCycleStep(1);
+        setCycleGroupId('');
+        setEligible([]);
+        setWinnerId('');
+        setPlannedWinnerId(null);
+        setPlannedNextMonth(null);
+        setShowCycle(true);
+    };
 
     const selectCycleGroup = async (groupId) => {
         setCycleGroupId(groupId);
         setLoadingEligible(true);
         try {
-            const res = await getEligibleMembers(groupId);
-            setEligible(res.data.members || []);
+            const [eligibleRes, planRes] = await Promise.all([
+                getEligibleMembers(groupId),
+                getPlannedWinner(groupId).catch(() => ({ data: {} })),
+            ]);
+            setEligible(eligibleRes.data.members || []);
+            const planned = planRes.data?.plannedWinnerId || null;
+            setPlannedWinnerId(planned);
+            setPlannedNextMonth(planRes.data?.nextMonth || null);
+            // Pre-select the planned winner if it's still eligible
+            if (planned && (eligibleRes.data.members || []).some(m => String(m._id) === String(planned))) {
+                setWinnerId(planned);
+            } else {
+                setWinnerId('');
+            }
             setCycleStep(2);
         } catch (err) {
             Alert.alert('Error', 'Failed to load eligible members');
@@ -240,14 +262,14 @@ export default function AdminControlsScreen({ navigation }) {
 
             <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: 90 }}>
 
-                {/* MANAGE CYCLES */}
-                <Text style={styles.sectionTitle}>MANAGE CYCLES</Text>
+                {/* MONTHLY DRAW */}
+                <Text style={styles.sectionTitle}>MONTHLY DRAW</Text>
                 <ActionCard
                     icon="add-circle-outline"
                     iconBg={colors.primaryLight}
                     iconColor={colors.primary}
-                    title="Create New Cycle"
-                    subtitle="Run BC draw and select a winner"
+                    title="Run This Month's Draw"
+                    subtitle="Execute the cycle for the next month (uses your POT Plan)"
                     onPress={openCycle}
                     colors={colors}
                 />
@@ -308,27 +330,32 @@ export default function AdminControlsScreen({ navigation }) {
             </ScrollView>
 
             {/* Create Cycle Modal */}
-            <Sheet visible={showCycle} title={cycleStep === 1 ? 'Step 1: Select Group' : 'Step 2: Select Winner'} onClose={() => setShowCycle(false)} colors={colors}>
+            <Sheet visible={showCycle} title={cycleStep === 1 ? 'Run Draw: Select Group' : 'Run Draw: Confirm Winner'} onClose={() => setShowCycle(false)} colors={colors}>
                 <ScrollView style={styles.cycleScroll} showsVerticalScrollIndicator={false}>
                     {cycleStep === 1 ? (
                         allGroups.filter(g => g.status === 'active').length === 0 ? (
                             <Text style={styles.emptyHint}>No active groups found</Text>
                         ) : (
-                            allGroups.filter(g => g.status === 'active').map(g => (
-                                <TouchableOpacity
-                                    key={g._id}
-                                    style={[styles.selectRow, cycleGroupId === g._id && styles.selectRowActive]}
-                                    onPress={() => selectCycleGroup(g._id)}
-                                    disabled={loadingEligible}
-                                    activeOpacity={0.75}
-                                >
-                                    <Text style={styles.selectRowText}>{g.name}</Text>
-                                    <Text style={styles.selectRowSub}>Month {g.currentMonth}/{g.totalMonths} · {g.members?.length || 0} members</Text>
-                                    {loadingEligible && cycleGroupId === g._id && (
-                                        <ActivityIndicator size="small" color={colors.primary} style={{ marginTop: 4 }} />
-                                    )}
-                                </TouchableOpacity>
-                            ))
+                            allGroups.filter(g => g.status === 'active').map(g => {
+                                const active = cycleGroupId === g._id;
+                                return (
+                                    <TouchableOpacity
+                                        key={g._id}
+                                        style={[styles.selectRow, active && styles.selectRowActive]}
+                                        onPress={() => selectCycleGroup(g._id)}
+                                        disabled={loadingEligible}
+                                        activeOpacity={0.75}
+                                    >
+                                        <Text style={[styles.selectRowText, active && styles.selectRowTextActive]}>{g.name}</Text>
+                                        <Text style={[styles.selectRowSub, active && styles.selectRowSubActive]}>
+                                            Month {g.currentMonth}/{g.totalMonths} · {g.members?.length || 0} members
+                                        </Text>
+                                        {loadingEligible && active && (
+                                            <ActivityIndicator size="small" color={colors.primaryDark} style={{ marginTop: 4 }} />
+                                        )}
+                                    </TouchableOpacity>
+                                );
+                            })
                         )
                     ) : (
                         <>
@@ -336,20 +363,40 @@ export default function AdminControlsScreen({ navigation }) {
                                 <Ionicons name="arrow-back" size={14} color={colors.primary} />
                                 <Text style={styles.backLinkText}> Change group</Text>
                             </TouchableOpacity>
+                            {plannedNextMonth ? (
+                                <Text style={styles.plannedBanner}>
+                                    {plannedWinnerId
+                                        ? `Planned winner pre-selected for Month ${plannedNextMonth}. Tap another name to override.`
+                                        : `No POT plan for Month ${plannedNextMonth} — pick a winner manually.`}
+                                </Text>
+                            ) : null}
                             {eligible.length === 0 ? (
                                 <Text style={styles.emptyHint}>No eligible members — all have won already</Text>
                             ) : (
-                                eligible.map(m => (
-                                    <TouchableOpacity
-                                        key={m._id}
-                                        style={[styles.selectRow, winnerId === m._id && styles.selectRowActive]}
-                                        onPress={() => setWinnerId(m._id)}
-                                        activeOpacity={0.75}
-                                    >
-                                        <Text style={styles.selectRowText}>{m.name || m.phone}</Text>
-                                        <Text style={styles.selectRowSub}>{m.phone}</Text>
-                                    </TouchableOpacity>
-                                ))
+                                eligible.map(m => {
+                                    const isPlanned = plannedWinnerId && String(plannedWinnerId) === String(m._id);
+                                    const active    = winnerId === m._id;
+                                    return (
+                                        <TouchableOpacity
+                                            key={m._id}
+                                            style={[styles.selectRow, active && styles.selectRowActive]}
+                                            onPress={() => setWinnerId(m._id)}
+                                            activeOpacity={0.75}
+                                        >
+                                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                                <Text style={[styles.selectRowText, active && styles.selectRowTextActive]}>
+                                                    {m.name || m.phone}
+                                                </Text>
+                                                {isPlanned && (
+                                                    <View style={styles.plannedBadge}>
+                                                        <Text style={styles.plannedBadgeText}>Planned</Text>
+                                                    </View>
+                                                )}
+                                            </View>
+                                            <Text style={[styles.selectRowSub, active && styles.selectRowSubActive]}>{m.phone}</Text>
+                                        </TouchableOpacity>
+                                    );
+                                })
                             )}
                         </>
                     )}
@@ -361,7 +408,7 @@ export default function AdminControlsScreen({ navigation }) {
                         disabled={creatingCycle}
                         activeOpacity={0.85}
                     >
-                        {creatingCycle ? <ActivityIndicator color="#fff" /> : <Text style={styles.sheetBtnText}>Create Cycle & Notify</Text>}
+                        {creatingCycle ? <ActivityIndicator color="#fff" /> : <Text style={styles.sheetBtnText}>Run Draw & Notify</Text>}
                     </TouchableOpacity>
                 ) : null}
             </Sheet>
@@ -562,9 +609,23 @@ function makeStyles(colors) {
         selectRowActive: { borderColor: colors.primary, backgroundColor: colors.primaryLight },
         selectRowText:   { fontSize: 14, fontFamily: F.semibold, color: colors.text },
         selectRowSub:    { fontSize: 12, fontFamily: F.regular, color: colors.textSecondary, marginTop: 3 },
+        // selectRowActive bg is colors.primaryLight (fixed light tint, same in both modes), so the
+        // text on it must use dark themed colors that contrast in both light + dark mode.
+        selectRowTextActive: { color: colors.primaryDark },
+        selectRowSubActive:  { color: colors.primaryDark, opacity: 0.75 },
         backLink:        { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
         backLinkText:    { fontSize: 13, fontFamily: F.medium, color: colors.primary },
         emptyHint:       { fontSize: 13, fontFamily: F.regular, color: colors.textSecondary, textAlign: 'center', marginTop: 20 },
+        plannedBanner:   {
+            fontSize: 12, fontFamily: F.medium, color: colors.primary,
+            backgroundColor: colors.primaryLight, borderRadius: 8,
+            paddingHorizontal: 12, paddingVertical: 8, marginBottom: 10,
+        },
+        plannedBadge: {
+            marginLeft: 8, backgroundColor: colors.primary,
+            paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4,
+        },
+        plannedBadgeText: { fontSize: 10, fontFamily: F.semibold, color: '#fff' },
         field:           { marginBottom: 12 },
         fieldLabel:      { fontSize: 12, fontFamily: F.medium, color: colors.textSecondary, marginBottom: 6 },
         fieldInput: {

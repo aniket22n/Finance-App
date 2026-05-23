@@ -362,11 +362,103 @@ router.post('/account-requests/:requestId/reject', auth, adminOnly, async (req, 
             return res.status(400).json({ error: 'Request is no longer pending' });
         }
 
+<<<<<<< Updated upstream
         request.status = 'rejected';
         request.reviewedAt = new Date();
         request.reviewedBy = req.user._id;
         if (reason) request.rejectReason = reason.trim();
         await request.save();
+=======
+        await AccountRequest.deleteOne({ _id: request._id });
+
+        res.json({ success: true, message: 'Account request rejected and removed' });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/admin/groups/:groupId/configure-pot
+// Bulk-set winner + EMI amounts per month for a group.
+// Body: { potConfig: [{ month, selectedWinner, winnerEMI, otherMemberEMI }, ...] }
+router.post('/groups/:groupId/configure-pot', auth, adminOnly, async (req, res) => {
+    try {
+        const { potConfig } = req.body;
+        if (!Array.isArray(potConfig) || potConfig.length === 0) {
+            return res.status(400).json({ error: 'potConfig must be a non-empty array' });
+        }
+
+        const group = await Group.findById(req.params.groupId);
+        if (!group) return res.status(404).json({ error: 'Group not found' });
+
+        const memberSet = new Set(group.members.map(id => String(id)));
+        const memberCount = group.members.length;
+        const currentMonth = group.currentMonth || 0;
+        const seenMonths = new Set();
+        const sanitized = [];
+
+        // Preserve already-run (locked) months from the existing config so the client
+        // can submit a payload covering only the future months without wiping history.
+        const lockedRows = (group.monthlyConfig || []).filter(c => c.month <= currentMonth);
+        const usedWinners = new Set();
+        for (const row of lockedRows) {
+            sanitized.push({
+                month:      row.month,
+                winner:     row.winner,
+                reducedEmi: row.reducedEmi,
+                emiAmount:  row.emiAmount,
+                potAmount:  row.potAmount,
+            });
+            seenMonths.add(row.month);
+            if (row.winner) usedWinners.add(String(row.winner));
+        }
+
+        for (const entry of potConfig) {
+            const month = Number(entry.month);
+            if (!Number.isInteger(month) || month < 1 || month > group.totalMonths) {
+                return res.status(400).json({ error: `Invalid month: ${entry.month}. Must be 1-${group.totalMonths}` });
+            }
+            if (month <= currentMonth) {
+                return res.status(400).json({ error: `Month ${month} is locked — its cycle has already been executed` });
+            }
+            if (seenMonths.has(month)) {
+                return res.status(400).json({ error: `Duplicate entry for month ${month}` });
+            }
+            seenMonths.add(month);
+
+            const winnerEMI      = Number(entry.winnerEMI);
+            const otherMemberEMI = Number(entry.otherMemberEMI);
+            if (!Number.isFinite(winnerEMI) || winnerEMI <= 0) {
+                return res.status(400).json({ error: `Month ${month}: winnerEMI must be a positive number` });
+            }
+            if (!Number.isFinite(otherMemberEMI) || otherMemberEMI <= 0) {
+                return res.status(400).json({ error: `Month ${month}: otherMemberEMI must be a positive number` });
+            }
+
+            let winnerId = null;
+            if (entry.selectedWinner) {
+                winnerId = String(entry.selectedWinner);
+                if (!memberSet.has(winnerId)) {
+                    return res.status(400).json({ error: `Month ${month}: selectedWinner is not a member of this group` });
+                }
+                if (usedWinners.has(winnerId)) {
+                    return res.status(400).json({ error: `Month ${month}: this member is already a winner in another month` });
+                }
+                usedWinners.add(winnerId);
+            }
+
+            sanitized.push({
+                month,
+                winner: winnerId,
+                reducedEmi: winnerEMI,
+                emiAmount: otherMemberEMI,
+                potAmount: winnerEMI + otherMemberEMI * Math.max(0, memberCount - 1),
+            });
+        }
+
+        sanitized.sort((a, b) => a.month - b.month);
+        group.monthlyConfig = sanitized;
+        await group.save();
+>>>>>>> Stashed changes
 
         res.json({ success: true, message: 'Account request rejected' });
     } catch (error) {

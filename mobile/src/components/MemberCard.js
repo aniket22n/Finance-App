@@ -17,25 +17,37 @@ export default function MemberCard({ member, isWinner, paymentStatus, emiAmount 
     };
     const status = STATUS[paymentStatus] || STATUS.pending;
 
+    // Winner card uses a light-green background (same in light & dark mode), so the inner
+    // text needs a dark-on-light color rather than the default theme text color.
+    // Using a very dark forest green ensures WCAG AA contrast on the #ECFDF5 background.
+    const winnerOnLight      = '#064E3B'; // very dark green — high contrast on light-green bg
+    const winnerOnLightMuted = '#065F46'; // slightly lighter dark-green for secondary text
+
     return (
         <View style={[styles.card, isWinner && styles.winnerCard]}>
             {isWinner && (
                 <View style={styles.winnerBadge}>
-                    <Ionicons name="trophy" size={10} color={colors.primary} />
-                    <Text style={styles.winnerText}>POT HOLDER</Text>
+                    <Ionicons name="trophy" size={10} color={winnerOnLight} />
+                    <Text style={[styles.winnerText, { color: winnerOnLight }]}>POT HOLDER</Text>
                 </View>
             )}
             <View style={styles.row}>
                 <Avatar uri={member.avatar} name={member.name} size={42} />
                 <View style={styles.info}>
-                    <Text style={styles.name}>{member.name || member.phone}</Text>
-                    <Text style={styles.phone}>{member.phone}</Text>
+                    <Text style={[styles.name, isWinner && { color: winnerOnLight }]}>
+                        {member.name || member.phone}
+                    </Text>
+                    <Text style={[styles.phone, isWinner && { color: winnerOnLightMuted }]}>
+                        {member.phone}
+                    </Text>
                 </View>
                 <View style={styles.statusWrap}>
                     <Ionicons name={status.icon} size={18} color={status.color} />
                     <Text style={[styles.statusText, { color: status.color }]}>{status.label}</Text>
                     {emiAmount ? (
-                        <Text style={styles.amount}>₹{emiAmount.toLocaleString()}</Text>
+                        <Text style={[styles.amount, isWinner && { color: winnerOnLight }]}>
+                            ₹{emiAmount.toLocaleString()}
+                        </Text>
                     ) : null}
                 </View>
             </View>

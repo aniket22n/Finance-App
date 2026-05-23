@@ -527,7 +527,9 @@ function makeStyles(colors) {
             marginRight: 12, borderWidth: 1, borderColor: colors.status.rejected.border,
         },
         winnerLabel:  { fontSize: 11, fontFamily: F.medium, color: colors.primary },
-        winnerName:   { fontSize: 16, fontFamily: F.medium, color: colors.text, marginTop: 2 },
+        // winnerCard bg is colors.primaryLight (a fixed light tint, same in both modes), so the
+        // winner name must use a dark themed color, not colors.text (which is white in dark mode).
+        winnerName:   { fontSize: 16, fontFamily: F.semibold, color: colors.primaryDark, marginTop: 2 },
         reducedBadge: { backgroundColor: colors.primaryLight, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1, borderColor: colors.status.rejected.border },
         reducedText:  { fontSize: 12, fontFamily: F.semibold, color: colors.primary },
         section:      { paddingHorizontal: 16, marginBottom: 8 },

@@ -14,16 +14,19 @@
  * @param {String} winnerId - User ID of this month's pot winner
  * @returns {Array} - Array of { userId, amount, isWinner }
  */
-function calculateMonthlyDues(group, winnerId) {
+function calculateMonthlyDues(group, winnerId, emiAmount, reducedEmi) {
+    const ea = emiAmount != null ? emiAmount : group.emiAmount;
+    const re = reducedEmi != null ? reducedEmi : group.reducedEmi;
     const dues = [];
 
     for (const memberId of group.members) {
-        const memberIdStr = memberId.toString();
+        // Members may be ObjectIds or populated User docs
+        const memberIdStr = (memberId._id || memberId).toString();
         const isWinner = memberIdStr === winnerId.toString();
 
         dues.push({
             userId: memberIdStr,
-            amount: isWinner ? group.reducedEmi : group.emiAmount,
+            amount: isWinner ? re : ea,
             isWinner,
         });
     }

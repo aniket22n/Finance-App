@@ -95,6 +95,7 @@ export const getUserPayments = (userId) => api.get(`/payments/user/${userId}`);
 export const getEmiCycles = (groupId) => api.get(`/emi/group/${groupId}`);
 export const getCurrentCycle = (groupId) => api.get(`/emi/current/${groupId}`);
 export const getEligibleMembers = (groupId) => api.get(`/emi/eligible/${groupId}`);
+export const getPlannedWinner   = (groupId) => api.get(`/emi/planned-winner/${groupId}`);
 
 // ── Admin ──
 export const getAdminDashboard = () => api.get('/admin/dashboard');

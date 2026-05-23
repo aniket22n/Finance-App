@@ -10,6 +10,10 @@ const { validate, createCycleValidations } = require('../middleware/validators')
 const router = express.Router();
 
 // POST /api/emi/cycle — Create next EMI cycle (admin only)
+// Integrates with group.monthlyConfig (POT Plan):
+//  - If the next month has a planned winner, that plan's amounts are used.
+//  - Body's winnerId may override the planned winner; the plan is updated to match (truth wins).
+//  - If no plan exists for the month, this back-fills it so the table reflects history.
 router.post('/cycle', auth, adminOnly, createCycleValidations, validate, async (req, res) => {
     try {
         const { groupId, winnerId } = req.body;
@@ -38,16 +42,46 @@ router.post('/cycle', auth, adminOnly, createCycleValidations, validate, async (
             return res.status(400).json({ error: 'This member has already won the pot' });
         }
 
+        // ── Reconcile with POT Plan ─────────────────────────────────────
+        // Find this month's planned config (if any). If a different month already plans this same
+        // winner, reject — each member can win only once.
+        const plannedIdx = group.monthlyConfig.findIndex(c => c.month === nextMonth);
+        const planned    = plannedIdx >= 0 ? group.monthlyConfig[plannedIdx] : null;
+        const conflict   = group.monthlyConfig.find(c =>
+            c.month !== nextMonth && c.winner && c.winner.toString() === winnerId
+        );
+        if (conflict) {
+            return res.status(400).json({
+                error: `This member is already planned to win month ${conflict.month}. Update the POT plan first.`,
+            });
+        }
+
+        // Decide amounts: prefer planned values, fall back to group defaults
+        const monthEmi     = planned?.emiAmount  ?? group.emiAmount;
+        const monthReduced = planned?.reducedEmi ?? group.reducedEmi;
+        const monthPot     = planned?.potAmount  ?? group.potAmount;
+
         const cycle = new EMICycle({
             group: groupId,
             month: nextMonth,
             winner: winnerId,
-            emiAmount: group.emiAmount,
-            reducedEmi: group.reducedEmi,
-            potAmount: group.potAmount,
+            emiAmount:  monthEmi,
+            reducedEmi: monthReduced,
+            potAmount:  monthPot,
         });
 
         await cycle.save();
+
+        // Back-fill / update monthlyConfig so the POT Plan table stays truthful
+        const entry = {
+            month: nextMonth,
+            winner: winnerId,
+            reducedEmi: monthReduced,
+            emiAmount:  monthEmi,
+            potAmount:  monthPot,
+        };
+        if (plannedIdx >= 0) group.monthlyConfig[plannedIdx] = entry;
+        else                 group.monthlyConfig.push(entry);
 
         // Update group current month
         group.currentMonth = nextMonth;
@@ -56,8 +90,8 @@ router.post('/cycle', auth, adminOnly, createCycleValidations, validate, async (
         }
         await group.save();
 
-        // Create pending payment records for all members
-        const dues = calculateMonthlyDues(group, winnerId);
+        // Create pending payment records for all members using per-month amounts
+        const dues = calculateMonthlyDues(group, winnerId, monthEmi, monthReduced);
         for (const due of dues) {
             await Payment.findOneAndUpdate(
                 { user: due.userId, group: groupId, month: nextMonth },
@@ -78,7 +112,7 @@ router.post('/cycle', auth, adminOnly, createCycleValidations, validate, async (
             await sendPushNotification(
                 winnerMember.expoPushToken,
                 '🎉 Congratulations! You won the pot!',
-                `You are the pot holder for Month ${nextMonth}. Your EMI is reduced to ₹${group.reducedEmi}.`,
+                `You are the pot holder for Month ${nextMonth}. Your EMI is reduced to ₹${monthReduced}.`,
                 { type: 'pot_winner', groupId, month: nextMonth }
             );
         }
@@ -92,7 +126,7 @@ router.post('/cycle', auth, adminOnly, createCycleValidations, validate, async (
             await sendBulkNotifications(
                 otherTokens,
                 `📢 Month ${nextMonth} EMI Due`,
-                `EMI of ₹${group.emiAmount} is due for ${group.name}. Pay before the deadline.`,
+                `EMI of ₹${monthEmi} is due for ${group.name}. Pay before the deadline.`,
                 { type: 'emi_due', groupId, month: nextMonth }
             );
         }
@@ -143,6 +177,26 @@ router.get('/current/:groupId', auth, async (req, res) => {
 
         const potTotal = calculatePotTotal(group);
         res.json({ cycle, potTotal });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/emi/planned-winner/:groupId — The POT-Plan winner for the next month (if any)
+router.get('/planned-winner/:groupId', auth, async (req, res) => {
+    try {
+        const group = await Group.findById(req.params.groupId).lean();
+        if (!group) return res.status(404).json({ error: 'Group not found' });
+
+        const nextMonth = (group.currentMonth || 0) + 1;
+        const entry = (group.monthlyConfig || []).find(c => c.month === nextMonth);
+        res.json({
+            nextMonth,
+            totalMonths: group.totalMonths,
+            plannedWinnerId: entry?.winner || null,
+            plannedEmiAmount:  entry?.emiAmount  ?? null,
+            plannedReducedEmi: entry?.reducedEmi ?? null,
+        });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
