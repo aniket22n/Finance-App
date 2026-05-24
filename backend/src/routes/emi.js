@@ -16,7 +16,7 @@ const router = express.Router();
 //  - If no plan exists for the month, this back-fills it so the table reflects history.
 router.post('/cycle', auth, adminOnly, createCycleValidations, validate, async (req, res) => {
     try {
-        const { groupId, winnerId } = req.body;
+        const { groupId, winnerId, reducedEmi: bodyReducedEmi, emiAmount: bodyEmiAmount } = req.body;
 
         const group = await Group.findById(groupId).populate('members', 'name phone expoPushToken');
         if (!group) return res.status(404).json({ error: 'Group not found' });
@@ -56,9 +56,12 @@ router.post('/cycle', auth, adminOnly, createCycleValidations, validate, async (
             });
         }
 
-        // Decide amounts: prefer planned values, fall back to group defaults
-        const monthEmi     = planned?.emiAmount  ?? group.emiAmount;
-        const monthReduced = planned?.reducedEmi ?? group.reducedEmi;
+        // Decide amounts: caller-provided override (admin edited at draw time) wins; else
+        // fall back to planned value, then to group default.
+        const overrideReduced = Number(bodyReducedEmi);
+        const overrideEmi     = Number(bodyEmiAmount);
+        const monthEmi     = Number.isFinite(overrideEmi)     && overrideEmi     > 0 ? overrideEmi     : (planned?.emiAmount  ?? group.emiAmount);
+        const monthReduced = Number.isFinite(overrideReduced) && overrideReduced > 0 ? overrideReduced : (planned?.reducedEmi ?? group.reducedEmi);
         const monthPot     = planned?.potAmount  ?? group.potAmount;
 
         const cycle = new EMICycle({
@@ -112,7 +115,7 @@ router.post('/cycle', auth, adminOnly, createCycleValidations, validate, async (
             await sendPushNotification(
                 winnerMember.expoPushToken,
                 '🎉 Congratulations! You won the pot!',
-                `You are the pot holder for Month ${nextMonth}. Your EMI is reduced to ₹${monthReduced}.`,
+                `You are the pot holder for Month ${nextMonth}. Your fixed EMI is ₹${monthEmi}.`,
                 { type: 'pot_winner', groupId, month: nextMonth }
             );
         }
@@ -126,7 +129,7 @@ router.post('/cycle', auth, adminOnly, createCycleValidations, validate, async (
             await sendBulkNotifications(
                 otherTokens,
                 `📢 Month ${nextMonth} EMI Due`,
-                `EMI of ₹${monthEmi} is due for ${group.name}. Pay before the deadline.`,
+                `Reducing EMI of ₹${monthReduced} is due for ${group.name}. Pay before the deadline.`,
                 { type: 'emi_due', groupId, month: nextMonth }
             );
         }

@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useRef } from 'react';
+import React, { useMemo, useState, useRef, useEffect } from 'react';
 import {
     View, Text, TextInput, TouchableOpacity, StyleSheet,
     KeyboardAvoidingView, Platform, ActivityIndicator, Alert, ScrollView,
@@ -15,7 +15,7 @@ import { webOutlineReset } from '../hooks/useInputFocus';
 const PIN_LENGTH = 4;
 
 export default function SetPINScreen({ route, navigation }) {
-    const { phone, otp, name, token, user, mode = 'signup' } = route.params || {};
+    const { phone, otp, firstName, lastName, name, token, user, mode = 'signup' } = route.params || {};
     const { login } = useAuth();
     const { colors } = useTheme();
     const [pinDigits, setPinDigits] = useState(Array(PIN_LENGTH).fill(''));
@@ -23,6 +23,14 @@ export default function SetPINScreen({ route, navigation }) {
     const [loading, setLoading] = useState(false);
     const pinRefs = useRef([]);
     const confirmRefs = useRef([]);
+
+    // Admins don't use PINs — log them in directly if they somehow landed here. The OTP-login
+    // path in OTPVerificationScreen already handles this, but guard the screen defensively.
+    useEffect(() => {
+        if (mode === 'login' && user?.role === 'admin' && token) {
+            login(token, user);
+        }
+    }, []);
 
     const pin = pinDigits.join('');
     const confirmPin = confirmDigits.join('');
@@ -57,7 +65,14 @@ export default function SetPINScreen({ route, navigation }) {
         try {
             await savePIN(phone, pin);
             if (mode === 'signup') {
-                const res = await signup({ name, phone, otp, pin });
+                const res = await signup({
+                    firstName,
+                    lastName,
+                    ...(name && !firstName ? { name } : {}),  // legacy fallback
+                    phone,
+                    otp,
+                    pin,
+                });
                 navigation.replace('SignupPending', { name: res.data.user.name, phone: res.data.user.phone });
             } else {
                 // Authenticated via OTP — store PIN on backend using the OTP-issued token

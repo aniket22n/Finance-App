@@ -1,14 +1,14 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import {
     View, Text, ScrollView, ActivityIndicator, StyleSheet,
-    RefreshControl, TouchableOpacity, Modal, TextInput, Alert, FlatList,
+    RefreshControl, TouchableOpacity, Modal, TextInput, Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import {
-    getGroup, getCurrentCycle, getGroupPayments, getEligibleMembers,
-    deleteGroup, addMember, getAdminUsers, sendOtp, verifyOtp,
+    getGroup, getCurrentCycle, getGroupPayments,
+    deleteGroup, sendOtp, verifyOtp, activateGroup,
 } from '../services/api';
 import MemberCard from '../components/MemberCard';
 import ProgressRing from '../components/ProgressRing';
@@ -42,16 +42,8 @@ export default function GroupDetailScreen({ route, navigation }) {
     const [group, setGroup] = useState(null);
     const [cycle, setCycle] = useState(null);
     const [payments, setPayments] = useState([]);
-    const [eligible, setEligible] = useState([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
-
-    // Add Member modal
-    const [showAddMember, setShowAddMember] = useState(false);
-    const [allUsers, setAllUsers] = useState([]);
-    const [memberSearch, setMemberSearch] = useState('');
-    const [addingMember, setAddingMember] = useState(null);
-    const [loadingUsers, setLoadingUsers] = useState(false);
 
     // OTP-delete flow
     const [showOtpModal, setShowOtpModal] = useState(false);
@@ -62,20 +54,17 @@ export default function GroupDetailScreen({ route, navigation }) {
 
     const { toast, show } = useToast();
     const [otpFocused, otpFocusProps] = useInputFocus();
-    const [memberSearchFocused, memberSearchFocusProps] = useInputFocus();
 
     const loadData = async () => {
         try {
-            const [groupRes, cycleRes, paymentsRes, eligibleRes] = await Promise.all([
+            const [groupRes, cycleRes, paymentsRes] = await Promise.all([
                 getGroup(groupId),
                 getCurrentCycle(groupId).catch(() => ({ data: {} })),
                 getGroupPayments(groupId).catch(() => ({ data: { payments: [] } })),
-                getEligibleMembers(groupId).catch(() => ({ data: { members: [] } })),
             ]);
             setGroup(groupRes.data.group);
             setCycle(cycleRes.data.cycle || null);
             setPayments(paymentsRes.data.payments || []);
-            setEligible(eligibleRes.data.members || []);
         } catch (err) {
             console.log('Error loading group:', err.message);
         } finally {
@@ -142,31 +131,20 @@ export default function GroupDetailScreen({ route, navigation }) {
         }
     };
 
-    const openAddMember = async () => {
-        setShowAddMember(true);
-        setMemberSearch('');
-        setLoadingUsers(true);
+    const [activating, setActivating] = useState(false);
+    const handleActivate = async () => {
+        if (activating) return;
+        setActivating(true);
         try {
-            const res = await getAdminUsers();
-            const existing = new Set((group?.members || []).map(m => m._id));
-            setAllUsers((res.data.users || []).filter(u => !existing.has(u._id)));
-        } catch {
-            Alert.alert('Error', 'Could not load users');
-        } finally {
-            setLoadingUsers(false);
-        }
-    };
-
-    const handleAddMember = async (member) => {
-        setAddingMember(member._id);
-        try {
-            await addMember(groupId, member._id);
-            setShowAddMember(false);
-            await loadData();
+            const res = await activateGroup(groupId);
+            show('Group activated');
+            if (res?.data?.status) setGroup(g => g ? { ...g, status: res.data.status } : g);
         } catch (err) {
-            Alert.alert('Error', err.response?.data?.error || 'Failed to add member');
+            const candidates = [err?.response?.data?.error, err?.response?.data?.message, err?.message];
+            const msg = candidates.find(v => typeof v === 'string' && v.length > 0) || 'Failed to activate group';
+            show(msg, 'error');
         } finally {
-            setAddingMember(null);
+            setActivating(false);
         }
     };
 
@@ -195,12 +173,25 @@ export default function GroupDetailScreen({ route, navigation }) {
     const isActive = group.status === 'active';
     const statusBadge = getStatusBadge(isActive ? 'success' : 'pending', colors);
 
-    const filteredUsers = memberSearch
-        ? allUsers.filter(u =>
-            u.name?.toLowerCase().includes(memberSearch.toLowerCase()) ||
-            u.phone?.includes(memberSearch)
-          )
-        : allUsers;
+    // Map memberId → month they won (only for months that have already been drawn).
+    // Used to (a) flag past/current winners on MemberCard and (b) sort the member list
+    // so winners appear in ascending month order, then non-winners.
+    const winnerMonthByMember = new Map();
+    for (const c of (group.monthlyConfig || [])) {
+        if (c.month <= currentMonth && c.winner) {
+            winnerMonthByMember.set(String(c.winner), c.month);
+        }
+    }
+    const currentWinnerKey = winnerId ? String(winnerId) : '';
+
+    const sortedMembers = [...(group.members || [])].sort((a, b) => {
+        const ma = winnerMonthByMember.get(String(a._id));
+        const mb = winnerMonthByMember.get(String(b._id));
+        if (ma && mb) return ma - mb;       // both won — month 1 first
+        if (ma) return -1;                  // only a won — a comes first
+        if (mb) return 1;                   // only b won — b comes first
+        return 0;                           // neither won — preserve order
+    });
 
     return (
         <View style={{ flex: 1 }}>
@@ -228,9 +219,9 @@ export default function GroupDetailScreen({ route, navigation }) {
                     <View style={styles.statsRow}>
                         <StatItem label="Pot Amount" value={`₹${group.potAmount?.toLocaleString()}`} accent colors={colors} />
                         <View style={styles.statDivider} />
-                        <StatItem label="EMI / Month" value={`₹${group.emiAmount?.toLocaleString()}`} colors={colors} />
+                        <StatItem label="Winner EMI" value={`₹${group.emiAmount?.toLocaleString()}`} colors={colors} />
                         <View style={styles.statDivider} />
-                        <StatItem label="Reduced EMI" value={`₹${group.reducedEmi?.toLocaleString()}`} colors={colors} />
+                        <StatItem label="Reducing EMI" value={`₹${group.reducedEmi?.toLocaleString()}`} colors={colors} />
                     </View>
                 </View>
 
@@ -247,31 +238,8 @@ export default function GroupDetailScreen({ route, navigation }) {
                             </View>
                         </View>
                         <View style={styles.reducedBadge}>
-                            <Text style={styles.reducedText}>₹{group.reducedEmi?.toLocaleString()} EMI</Text>
+                            <Text style={styles.reducedText}>₹{group.emiAmount?.toLocaleString()} EMI</Text>
                         </View>
-                    </View>
-                )}
-
-                {/* Next Draw */}
-                {isActive && currentMonth < totalMonths && eligible.length > 0 && (
-                    <View style={styles.section}>
-                        <Text style={styles.sectionTitle}>🎯 Next Draw Eligible</Text>
-                        <Text style={styles.sectionSub}>
-                            {eligible.length} member{eligible.length !== 1 ? 's' : ''} eligible for Month {currentMonth + 1}
-                        </Text>
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.eligibleScroll}>
-                            {eligible.map(m => {
-                                const isMe = m._id === user?._id;
-                                return (
-                                    <View key={m._id} style={[styles.eligibleChip, isMe && styles.eligibleChipMe]}>
-                                        {isMe && <Ionicons name="star" size={10} color={colors.primary} style={{ marginRight: 4 }} />}
-                                        <Text style={[styles.eligibleText, isMe && styles.eligibleTextMe]}>
-                                            {m.name || m.phone}
-                                        </Text>
-                                    </View>
-                                );
-                            })}
-                        </ScrollView>
                     </View>
                 )}
 
@@ -282,31 +250,39 @@ export default function GroupDetailScreen({ route, navigation }) {
                             Members ({group.members?.length || 0}/{group.maxMembers})
                         </Text>
                         {isAdmin && (
-                            <TouchableOpacity style={styles.addMemberBtn} onPress={openAddMember} activeOpacity={0.75}>
+                            <TouchableOpacity
+                                style={styles.addMemberBtn}
+                                onPress={() => navigation.navigate('AdminAddMembers', { groupId, mode: 'manage' })}
+                                activeOpacity={0.75}
+                            >
                                 <Ionicons name="person-add-outline" size={14} color={colors.primary} />
                                 <Text style={styles.addMemberText}>Add</Text>
                             </TouchableOpacity>
                         )}
                     </View>
-                    {group.members?.map(member => {
+                    {sortedMembers.map(member => {
                         const memberPayment = payments.find(
                             p => (p.user?._id || p.user) === member._id && p.month === currentMonth
                         );
-                        const isWinner = winnerId && member._id === winnerId.toString();
+                        const wonMonth     = winnerMonthByMember.get(String(member._id)) || null;
+                        const isWinner     = !!currentWinnerKey && String(member._id) === currentWinnerKey;
+                        const isPastWinner = !!wonMonth && !isWinner;
                         return (
                             <MemberCard
                                 key={member._id}
                                 member={member}
                                 isWinner={isWinner}
+                                isPastWinner={isPastWinner}
+                                winnerMonth={wonMonth}
                                 paymentStatus={memberPayment?.status}
-                                emiAmount={isWinner ? group.reducedEmi : group.emiAmount}
+                                emiAmount={(isWinner || isPastWinner) ? group.emiAmount : group.reducedEmi}
                             />
                         );
                     })}
                 </View>
 
-                {/* Make Payment CTA */}
-                {isActive && (
+                {/* Make Payment CTA (members only) */}
+                {!isAdmin && isActive && (
                     <View style={styles.ctaSection}>
                         <TouchableOpacity
                             style={styles.ctaBtn}
@@ -316,6 +292,29 @@ export default function GroupDetailScreen({ route, navigation }) {
                             <Ionicons name="wallet" size={20} color="#fff" style={{ marginRight: 8 }} />
                             <Text style={styles.ctaText}>Make Payment</Text>
                         </TouchableOpacity>
+                    </View>
+                )}
+
+                {/* Activate Group (admin, pending only) */}
+                {isAdmin && group.status === 'pending' && (
+                    <View style={styles.activateSection}>
+                        <TouchableOpacity
+                            style={[styles.activateBtn, activating && { opacity: 0.6 }]}
+                            onPress={handleActivate}
+                            disabled={activating}
+                            activeOpacity={0.85}
+                        >
+                            {activating
+                                ? <ActivityIndicator size="small" color="#fff" />
+                                : <>
+                                    <Ionicons name="play-circle-outline" size={18} color="#fff" style={{ marginRight: 8 }} />
+                                    <Text style={styles.activateBtnText}>Activate Group</Text>
+                                  </>
+                            }
+                        </TouchableOpacity>
+                        <Text style={styles.activateHint}>
+                            Activates the scheme so draws can be run. Auto-runs after POT config save; use this as fallback.
+                        </Text>
                     </View>
                 )}
 
@@ -392,80 +391,6 @@ export default function GroupDetailScreen({ route, navigation }) {
                 </View>
             </Modal>
 
-            {/* Add Member Modal */}
-            <Modal visible={showAddMember} transparent animationType="slide" onRequestClose={() => setShowAddMember(false)}>
-                <View style={styles.overlay}>
-                    <View style={styles.sheet}>
-                        <View style={styles.handle} />
-                        <View style={styles.sheetHeader}>
-                            <Text style={styles.sheetTitle}>Add Member</Text>
-                            <TouchableOpacity onPress={() => setShowAddMember(false)}>
-                                <Ionicons name="close" size={22} color={colors.textSecondary} />
-                            </TouchableOpacity>
-                        </View>
-
-                        <View style={[styles.searchRow, focusBorder(colors, memberSearchFocused)]}>
-                            <Ionicons name="search" size={16} color={colors.textSecondary} style={{ marginRight: 8 }} />
-                            <TextInput
-                                style={[styles.searchInput, webOutlineReset]}
-                                value={memberSearch}
-                                onChangeText={setMemberSearch}
-                                placeholder="Search by name or phone..."
-                                placeholderTextColor={colors.textSecondary}
-                                autoFocus
-                                {...memberSearchFocusProps}
-                            />
-                            {memberSearch ? (
-                                <TouchableOpacity onPress={() => setMemberSearch('')}>
-                                    <Ionicons name="close-circle" size={16} color={colors.textSecondary} />
-                                </TouchableOpacity>
-                            ) : null}
-                        </View>
-
-                        {loadingUsers ? (
-                            <View style={styles.loadingBox}>
-                                <ActivityIndicator color={colors.primary} />
-                            </View>
-                        ) : filteredUsers.length === 0 ? (
-                            <View style={styles.loadingBox}>
-                                <Text style={styles.emptyText}>
-                                    {memberSearch ? 'No users found' : 'All users are already members'}
-                                </Text>
-                            </View>
-                        ) : (
-                            <FlatList
-                                data={filteredUsers}
-                                keyExtractor={item => item._id}
-                                style={styles.userList}
-                                showsVerticalScrollIndicator={false}
-                                renderItem={({ item }) => (
-                                    <TouchableOpacity
-                                        style={styles.userRow}
-                                        onPress={() => handleAddMember(item)}
-                                        disabled={addingMember === item._id}
-                                        activeOpacity={0.7}
-                                    >
-                                        <View style={styles.userAvatar}>
-                                            <Text style={styles.userAvatarText}>
-                                                {(item.name || item.phone || 'U').charAt(0).toUpperCase()}
-                                            </Text>
-                                        </View>
-                                        <View style={styles.userInfo}>
-                                            <Text style={styles.userName}>{item.name || 'No name'}</Text>
-                                            <Text style={styles.userPhone}>{item.phone}</Text>
-                                        </View>
-                                        {addingMember === item._id
-                                            ? <ActivityIndicator size="small" color={colors.primary} />
-                                            : <Ionicons name="add-circle-outline" size={22} color={colors.primary} />}
-                                    </TouchableOpacity>
-                                )}
-                                ItemSeparatorComponent={() => <View style={styles.separator} />}
-                            />
-                        )}
-                    </View>
-                </View>
-            </Modal>
-
             <Toast {...toast} />
         </View>
     );
@@ -527,8 +452,6 @@ function makeStyles(colors) {
             marginRight: 12, borderWidth: 1, borderColor: colors.status.rejected.border,
         },
         winnerLabel:  { fontSize: 11, fontFamily: F.medium, color: colors.primary },
-        // winnerCard bg is colors.primaryLight (a fixed light tint, same in both modes), so the
-        // winner name must use a dark themed color, not colors.text (which is white in dark mode).
         winnerName:   { fontSize: 16, fontFamily: F.semibold, color: colors.primaryDark, marginTop: 2 },
         reducedBadge: { backgroundColor: colors.primaryLight, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1, borderColor: colors.status.rejected.border },
         reducedText:  { fontSize: 12, fontFamily: F.semibold, color: colors.primary },
@@ -542,16 +465,6 @@ function makeStyles(colors) {
             borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5,
         },
         addMemberText:  { fontSize: 12, fontFamily: F.semibold, color: colors.primary },
-        eligibleScroll: { marginBottom: 12 },
-        eligibleChip: {
-            flexDirection: 'row', alignItems: 'center',
-            backgroundColor: colors.backgroundTertiary, borderRadius: 20,
-            paddingHorizontal: 12, paddingVertical: 6, marginRight: 8,
-            borderWidth: 1, borderColor: colors.border,
-        },
-        eligibleChipMe: { backgroundColor: colors.primaryLight, borderColor: colors.primary },
-        eligibleText:   { fontSize: 11, fontFamily: F.medium, color: colors.text },
-        eligibleTextMe: { color: colors.primary },
         ctaSection:     { paddingHorizontal: 16, marginTop: 8 },
         ctaBtn: {
             flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
@@ -560,6 +473,16 @@ function makeStyles(colors) {
             shadowOpacity: 0.3, shadowRadius: 12, elevation: 4,
         },
         ctaText:       { fontSize: 15, fontFamily: F.semibold, color: '#fff' },
+        activateSection: { paddingHorizontal: 16, marginTop: 12 },
+        activateBtn: {
+            flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+            height: 52, borderRadius: 12, backgroundColor: colors.primary,
+        },
+        activateBtnText: { fontSize: 14, fontFamily: F.semibold, color: '#fff' },
+        activateHint: {
+            fontSize: 11, fontFamily: F.regular, color: colors.textSecondary,
+            textAlign: 'center', marginTop: 6, paddingHorizontal: 4,
+        },
         deleteSection: { paddingHorizontal: 16, marginTop: 12 },
         deleteBtn: {
             flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
@@ -595,37 +518,5 @@ function makeStyles(colors) {
         otpConfirmText: { fontSize: 15, fontFamily: F.semibold, color: '#fff' },
         otpCancelBtn:   { marginTop: 10, paddingVertical: 10 },
         otpCancelText:  { fontSize: 14, fontFamily: F.medium, color: colors.textSecondary },
-        // Bottom sheet modals
-        overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
-        sheet: {
-            backgroundColor: colors.background, borderTopLeftRadius: 24, borderTopRightRadius: 24,
-            padding: 24, paddingBottom: 36, maxHeight: '80%',
-        },
-        handle: {
-            width: 40, height: 4, backgroundColor: colors.border,
-            borderRadius: 2, alignSelf: 'center', marginBottom: 20,
-        },
-        sheetHeader:  { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-        sheetTitle:   { fontSize: 18, fontFamily: F.bold, color: colors.text },
-        searchRow: {
-            flexDirection: 'row', alignItems: 'center',
-            backgroundColor: colors.backgroundSecondary, borderRadius: 10,
-            paddingHorizontal: 14, height: 48, borderWidth: 1, borderColor: colors.border, marginBottom: 12,
-        },
-        searchInput: { flex: 1, fontSize: 14, fontFamily: F.regular, color: colors.text },
-        loadingBox:  { height: 120, alignItems: 'center', justifyContent: 'center' },
-        emptyText:   { fontSize: 14, fontFamily: F.regular, color: colors.textSecondary },
-        userList:    { flex: 1 },
-        userRow:     { flexDirection: 'row', alignItems: 'center', paddingVertical: 10 },
-        userAvatar: {
-            width: 40, height: 40, borderRadius: 20,
-            backgroundColor: colors.primaryLight, alignItems: 'center', justifyContent: 'center',
-            marginRight: 12, borderWidth: 1, borderColor: colors.status.rejected.border,
-        },
-        userAvatarText: { fontSize: 16, fontFamily: F.bold, color: colors.primary },
-        userInfo:    { flex: 1 },
-        userName:    { fontSize: 14, fontFamily: F.semibold, color: colors.text },
-        userPhone:   { fontSize: 12, fontFamily: F.regular, color: colors.textSecondary, marginTop: 1 },
-        separator:   { height: 1, backgroundColor: colors.border },
     });
 }

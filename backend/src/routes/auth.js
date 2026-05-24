@@ -365,6 +365,9 @@ router.post('/set-pin', async (req, res) => {
         }
         const user = await User.findOne({ phone });
         if (!user) return res.status(404).json({ error: 'User not found' });
+        if (user.role === 'admin') {
+            return res.status(403).json({ error: 'Admin accounts do not use PIN — log in with OTP' });
+        }
         user.pin = pinStr;
         await user.save();
         res.json({ success: true, message: 'PIN set successfully' });
@@ -393,6 +396,9 @@ router.post('/verify-pin', async (req, res) => {
             }
             return res.status(404).json({ error: 'User not found' });
         }
+        if (user.role === 'admin') {
+            return res.status(403).json({ error: 'Admins must log in with OTP, not PIN' });
+        }
         if (!user.pin) {
             return res.status(400).json({ error: 'PIN not set. Please log in with OTP.' });
         }
@@ -408,8 +414,21 @@ router.post('/verify-pin', async (req, res) => {
 // POST /api/auth/signup-with-pin — create AccountRequest with PIN (after OTP verification)
 router.post('/signup-with-pin', signupWithPinValidations, validate, async (req, res) => {
     try {
-        const { phone, otp, pin, name } = req.body;
+        const { phone, otp, pin } = req.body;
         const pinStr = String(pin);
+
+        // Both firstName and lastName are required. Accept a single legacy `name` only as a
+        // last-resort fallback (older client builds) — splitting on whitespace.
+        let firstName = (req.body.firstName || '').trim();
+        let lastName  = (req.body.lastName  || '').trim();
+        const legacyName = (req.body.name || '').trim();
+        if (!firstName && legacyName) {
+            const parts = legacyName.split(/\s+/);
+            firstName = parts[0] || '';
+            lastName  = parts.slice(1).join(' ');
+        }
+        if (!firstName) return res.status(400).json({ error: 'First name is required' });
+        if (!lastName)  return res.status(400).json({ error: 'Last name is required' });
 
         // Find temp user (created by send-otp) to verify OTP
         const tempUser = await User.findOne({ phone });
@@ -434,8 +453,14 @@ router.post('/signup-with-pin', signupWithPinValidations, validate, async (req, 
             }
         }
 
-        // Create AccountRequest
-        const request = await AccountRequest.create({ name: name.trim(), phone, pin: pinStr });
+        // Create AccountRequest. Pre-save hook will sync `name` from first+last.
+        const request = await AccountRequest.create({
+            firstName,
+            lastName,
+            ...(legacyName && !firstName ? { name: legacyName } : {}),
+            phone,
+            pin: pinStr,
+        });
 
         // Delete temp User (created only for OTP)
         await User.deleteOne({ _id: tempUser._id });
@@ -496,17 +521,34 @@ router.post('/has-pin', async (req, res) => {
 // PUT /api/auth/profile
 router.put('/profile', auth, async (req, res) => {
     try {
-        const { name, email, avatar, expoPushToken } = req.body;
-        const updates = {};
-        if (name !== undefined) updates.name = name;
-        if (email !== undefined) updates.email = email;
-        if (avatar !== undefined) updates.avatar = avatar;
-        if (expoPushToken !== undefined) updates.expoPushToken = expoPushToken;
+        const { firstName, lastName, name, email, avatar, expoPushToken } = req.body;
 
-        const user = await User.findByIdAndUpdate(req.user._id, updates, { new: true })
-            .select('-otp -otpExpiresAt');
+        // Use save() (not findByIdAndUpdate) so the pre-save hook keeps `name` in sync
+        // with firstName + lastName.
+        const user = await User.findById(req.user._id);
+        if (!user) return res.status(404).json({ error: 'User not found' });
 
-        res.json({ user });
+        if (firstName !== undefined) {
+            if (typeof firstName !== 'string' || !firstName.trim()) {
+                return res.status(400).json({ error: 'First name cannot be empty' });
+            }
+            user.firstName = firstName.trim();
+        }
+        if (lastName !== undefined) {
+            if (typeof lastName !== 'string' || !lastName.trim()) {
+                return res.status(400).json({ error: 'Last name cannot be empty' });
+            }
+            user.lastName = lastName.trim();
+        }
+        // Allow direct `name` updates only when first/last weren't sent (legacy clients).
+        if (name !== undefined && firstName === undefined && lastName === undefined) user.name = name;
+        if (email          !== undefined) user.email = email;
+        if (avatar         !== undefined) user.avatar = avatar;
+        if (expoPushToken  !== undefined) user.expoPushToken = expoPushToken;
+
+        await user.save();
+        const fresh = await User.findById(user._id).select('-otp -otpExpiresAt');
+        res.json({ user: fresh });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }

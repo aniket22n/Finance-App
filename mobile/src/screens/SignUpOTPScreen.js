@@ -55,7 +55,15 @@ export default function SignUpOTPScreen({ route, navigation }) {
 
     const handleVerify = () => {
         if (!canVerify) return;
-        navigation.navigate('SetPIN', { phone, otp, name: route.params?.name, mode: 'signup' });
+        navigation.navigate('SetPIN', {
+            phone,
+            otp,
+            firstName: route.params?.firstName || '',
+            lastName:  route.params?.lastName  || '',
+            // legacy: in case some path still passes a single `name`
+            name:      route.params?.name      || '',
+            mode:      'signup',
+        });
     };
 
     const handleResend = async () => {

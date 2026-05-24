@@ -104,10 +104,24 @@ router.get('/users', auth, adminOnly, async (req, res) => {
             .select('-otp -otpExpiresAt')
             .sort({ createdAt: -1 })
             .skip((page - 1) * limit)
-            .limit(parseInt(limit));
+            .limit(parseInt(limit))
+            .lean();
+
+        // Build a userId → groups[{_id,name}] map in one query, then attach to each user.
+        const userIds = users.map(u => u._id);
+        const groups  = await Group.find({ members: { $in: userIds } }, 'name members').lean();
+        const byUser  = new Map();
+        for (const g of groups) {
+            for (const memberId of (g.members || [])) {
+                const key = String(memberId);
+                if (!byUser.has(key)) byUser.set(key, []);
+                byUser.get(key).push({ _id: g._id, name: g.name });
+            }
+        }
+        const enriched = users.map(u => ({ ...u, groups: byUser.get(String(u._id)) || [] }));
 
         const total = await User.countDocuments(filter);
-        res.json({ users, total, page: parseInt(page), pages: Math.ceil(total / limit) });
+        res.json({ users: enriched, total, page: parseInt(page), pages: Math.ceil(total / limit) });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -116,9 +130,24 @@ router.get('/users', auth, adminOnly, async (req, res) => {
 // DELETE /api/admin/users/:id — Delete user account
 router.delete('/users/:id', auth, adminOnly, async (req, res) => {
     try {
-        const user = await User.findByIdAndDelete(req.params.id);
-        if (!user) return res.status(404).json({ error: 'User not found' });
-        res.json({ message: 'User deleted successfully' });
+        // Block deleting admin accounts — both other admins AND self.
+        const target = await User.findById(req.params.id);
+        if (!target) return res.status(404).json({ error: 'User not found' });
+        if (target.role === 'admin') {
+            return res.status(400).json({ error: 'Admin accounts cannot be deleted from User Management' });
+        }
+        if (String(target._id) === String(req.user._id)) {
+            return res.status(400).json({ error: 'You cannot delete your own account' });
+        }
+
+        await User.deleteOne({ _id: target._id });
+        // Pull the deleted user out of every group's members[] so no dangling refs remain.
+        // (Historical Payment/EMICycle records keep the userId as audit trail.)
+        const pull = await Group.updateMany(
+            { members: target._id },
+            { $pull: { members: target._id } }
+        );
+        res.json({ success: true, message: 'User deleted successfully', removedFromGroups: pull.modifiedCount });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -333,12 +362,14 @@ router.post('/account-requests/:requestId/approve', auth, adminOnly, async (req,
         const exists = await User.findOne({ phone: request.phone });
         if (exists) return res.status(400).json({ error: 'Phone already registered as a user' });
 
-        // Create approved User from request
+        // Create approved User from request — pre-save hook will sync `name` from first+last.
         const user = await User.create({
-            name: request.name,
+            firstName: request.firstName || '',
+            lastName:  request.lastName  || '',
+            ...(request.name && !request.firstName ? { name: request.name } : {}),
             phone: request.phone,
-            pin: request.pin,
-            role: 'member',
+            pin:   request.pin,
+            role:  'member',
         });
 
         request.status = 'approved';
@@ -362,16 +393,13 @@ router.post('/account-requests/:requestId/reject', auth, adminOnly, async (req, 
             return res.status(400).json({ error: 'Request is no longer pending' });
         }
 
-<<<<<<< Updated upstream
         request.status = 'rejected';
         request.reviewedAt = new Date();
         request.reviewedBy = req.user._id;
         if (reason) request.rejectReason = reason.trim();
         await request.save();
-=======
-        await AccountRequest.deleteOne({ _id: request._id });
 
-        res.json({ success: true, message: 'Account request rejected and removed' });
+        res.json({ success: true, message: 'Account request rejected' });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -449,18 +477,49 @@ router.post('/groups/:groupId/configure-pot', auth, adminOnly, async (req, res) 
             sanitized.push({
                 month,
                 winner: winnerId,
-                reducedEmi: winnerEMI,
-                emiAmount: otherMemberEMI,
+                emiAmount: winnerEMI,
+                reducedEmi: otherMemberEMI,
                 potAmount: winnerEMI + otherMemberEMI * Math.max(0, memberCount - 1),
             });
         }
 
         sanitized.sort((a, b) => a.month - b.month);
         group.monthlyConfig = sanitized;
-        await group.save();
->>>>>>> Stashed changes
 
-        res.json({ success: true, message: 'Account request rejected' });
+        // Auto-activate a pending group once POT plan has at least one planned winner AND
+        // the roster has members. Draw route requires status==='active'; without this the
+        // admin would have no way to start the scheme.
+        const plannedHasWinner = sanitized.some(c => c.winner && c.month > (group.currentMonth || 0));
+        if (group.status === 'pending' && plannedHasWinner && group.members.length > 0) {
+            group.status = 'active';
+            if (!group.startDate) group.startDate = new Date();
+        }
+
+        await group.save();
+
+        res.json({ success: true, message: 'POT configuration saved', groupId: group._id, status: group.status });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/admin/groups/:groupId/activate — Manually flip a pending group to active.
+// The configurePot route auto-activates in the standard flow; this is the escape hatch
+// for cases where the admin wants to start the scheme without re-saving the POT plan.
+router.post('/groups/:groupId/activate', auth, adminOnly, async (req, res) => {
+    try {
+        const group = await Group.findById(req.params.groupId);
+        if (!group) return res.status(404).json({ error: 'Group not found' });
+
+        if (group.status === 'active')    return res.status(400).json({ error: 'Group is already active' });
+        if (group.status === 'completed') return res.status(400).json({ error: 'Group is already completed' });
+        if (group.members.length === 0)   return res.status(400).json({ error: 'Add at least one member before activating' });
+
+        group.status = 'active';
+        if (!group.startDate) group.startDate = new Date();
+        await group.save();
+
+        res.json({ success: true, message: 'Group activated', groupId: group._id, status: group.status });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }

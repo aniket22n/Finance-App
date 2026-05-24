@@ -1,11 +1,9 @@
 /**
  * EMI Engine — Core calculation logic for group pot schemes
- * 
- * Handles:
- * - Monthly EMI amounts per member
- * - Reduced EMI for pot winner
- * - Pot collection totals
- * - Scales for 20-100 members
+ *
+ * Convention:
+ *   group.emiAmount  — Winner's fixed (higher) EMI, paid by pot winners from the month they win.
+ *   group.reducedEmi — Non-winners' reducing (lower) EMI, paid by members who haven't won yet.
  */
 
 /**
@@ -26,7 +24,7 @@ function calculateMonthlyDues(group, winnerId, emiAmount, reducedEmi) {
 
         dues.push({
             userId: memberIdStr,
-            amount: isWinner ? re : ea,
+            amount: isWinner ? ea : re,
             isWinner,
         });
     }
@@ -36,13 +34,11 @@ function calculateMonthlyDues(group, winnerId, emiAmount, reducedEmi) {
 
 /**
  * Calculate total pot collection for a month
- * @param {Object} group - Group document
- * @returns {Number} - Total pot amount
+ * Pot = 1 winner * winnerEMI + (memberCount - 1) * reducingEMI
  */
 function calculatePotTotal(group) {
     const memberCount = group.members.length;
-    // Pot = (memberCount - 1) * fullEMI + 1 * reducedEMI
-    return (memberCount - 1) * group.emiAmount + group.reducedEmi;
+    return group.emiAmount + (memberCount - 1) * group.reducedEmi;
 }
 
 /**
@@ -52,7 +48,7 @@ function calculatePotTotal(group) {
  */
 function getGroupSummary(group) {
     const memberCount = group.members.length;
-    const monthlyCollection = (memberCount - 1) * group.emiAmount + group.reducedEmi;
+    const monthlyCollection = group.emiAmount + (memberCount - 1) * group.reducedEmi;
     const totalCycles = group.totalMonths;
     const remainingCycles = totalCycles - group.currentMonth;
     const progress = totalCycles > 0 ? ((group.currentMonth / totalCycles) * 100).toFixed(1) : 0;
@@ -78,13 +74,13 @@ function getGroupSummary(group) {
 function validateGroupConfig(config) {
     const errors = [];
 
-    if (config.minMembers < 20) errors.push('Minimum members must be at least 20');
+    if (config.minMembers < 2) errors.push('Minimum members must be at least 2');
     if (config.maxMembers > 100) errors.push('Maximum members cannot exceed 100');
     if (config.minMembers > config.maxMembers) errors.push('Min members cannot exceed max members');
     if (config.potAmount <= 0) errors.push('Pot amount must be positive');
     if (config.emiAmount <= 0) errors.push('EMI amount must be positive');
-    if (config.reducedEmi < 0) errors.push('Reduced EMI cannot be negative');
-    if (config.reducedEmi >= config.emiAmount) errors.push('Reduced EMI must be less than full EMI');
+    if (config.reducedEmi < 0) errors.push('Reducing EMI cannot be negative');
+    if (config.reducedEmi >= config.emiAmount) errors.push('Reducing EMI (non-winners) must be less than Winner EMI');
     if (config.totalMonths < config.minMembers) errors.push('Total months must be at least equal to minimum members');
 
     return { valid: errors.length === 0, errors };

@@ -2,6 +2,10 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
 const userSchema = new mongoose.Schema({
+    // Canonical name fields. The legacy `name` is auto-derived from firstName+lastName
+    // on save so existing display code (member cards, lists, etc.) keeps working.
+    firstName: { type: String, default: '' },
+    lastName:  { type: String, default: '' },
     name: { type: String, default: '' },
     phone: { type: String, required: true, unique: true },
     email: { type: String, default: '' },
@@ -17,6 +21,16 @@ const userSchema = new mongoose.Schema({
     passwordHash: { type: String, default: '' },
     pin: { type: String, default: null, minlength: 4, maxlength: 4 },
 }, { timestamps: true });
+
+// Keep `name` in sync with firstName + lastName on every save. Only overwrites
+// when at least one of first/last is set, so legacy users (with `name` only) are
+// untouched until they edit their profile.
+userSchema.pre('save', function (next) {
+    if (this.firstName || this.lastName) {
+        this.name = [this.firstName, this.lastName].filter(Boolean).join(' ').trim();
+    }
+    next();
+});
 
 userSchema.methods.setPassword = async function (plain) {
     this.passwordHash = await bcrypt.hash(plain, 10);

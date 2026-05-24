@@ -12,18 +12,21 @@ import { useInputFocus, focusBorder, webOutlineReset } from '../hooks/useInputFo
 
 export default function SignUpScreen({ route, navigation }) {
     const { colors } = useTheme();
-    const [name, setName] = useState('');
+    const [firstName, setFirstName] = useState('');
+    const [lastName, setLastName] = useState('');
     const [phone, setPhone] = useState(route?.params?.phone || '');
     const [phoneError, setPhoneError] = useState('');
     const [loading, setLoading] = useState(false);
-    const [nameFocused, nameFocusProps] = useInputFocus();
+    const [firstFocused, firstFocusProps] = useInputFocus();
+    const [lastFocused, lastFocusProps]   = useInputFocus();
     const [phoneFocused, phoneFocusProps] = useInputFocus();
 
-    const canSubmit = name.trim().length > 0 && phone.length === 10;
+    const canSubmit = firstName.trim().length > 0 && lastName.trim().length > 0 && phone.length === 10;
 
     const handleSendOtp = async () => {
         setPhoneError('');
-        if (!name.trim()) return Alert.alert('Required', 'Enter your full name');
+        if (!firstName.trim()) return Alert.alert('Required', 'Enter your first name');
+        if (!lastName.trim())  return Alert.alert('Required', 'Enter your last name');
         if (phone.length !== 10) return Alert.alert('Invalid', 'Enter a valid 10-digit phone number');
         setLoading(true);
         try {
@@ -41,7 +44,11 @@ export default function SignUpScreen({ route, navigation }) {
                 return;
             }
             await sendOtp(phone);
-            navigation.navigate('SignUpOTP', { phone, name: name.trim() });
+            navigation.navigate('SignUpOTP', {
+                phone,
+                firstName: firstName.trim(),
+                lastName:  lastName.trim(),
+            });
         } catch (err) {
             Alert.alert('Error', apiErrMsg(err, 'Failed to send OTP'));
         } finally {
@@ -68,13 +75,25 @@ export default function SignUpScreen({ route, navigation }) {
 
                 <View style={styles.formSection}>
                     <TextInput
-                        style={[styles.input, webOutlineReset, focusBorder(colors, nameFocused)]}
-                        value={name}
-                        onChangeText={setName}
-                        placeholder="Full Name"
+                        style={[styles.input, webOutlineReset, focusBorder(colors, firstFocused)]}
+                        value={firstName}
+                        onChangeText={setFirstName}
+                        placeholder="First Name"
                         placeholderTextColor={colors.textSecondary}
                         returnKeyType="next"
-                        {...nameFocusProps}
+                        autoCapitalize="words"
+                        {...firstFocusProps}
+                    />
+
+                    <TextInput
+                        style={[styles.input, webOutlineReset, focusBorder(colors, lastFocused), { marginTop: 14 }]}
+                        value={lastName}
+                        onChangeText={setLastName}
+                        placeholder="Last Name"
+                        placeholderTextColor={colors.textSecondary}
+                        returnKeyType="next"
+                        autoCapitalize="words"
+                        {...lastFocusProps}
                     />
 
                     <View style={[styles.phoneRow, focusBorder(colors, phoneFocused), { marginTop: 14 }, phoneError && styles.inputError]}>

@@ -5,39 +5,66 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { F } from '../theme';
 
-export default function MemberCard({ member, isWinner, paymentStatus, emiAmount }) {
+export default function MemberCard({ member, isWinner, isPastWinner, winnerMonth, paymentStatus, emiAmount }) {
     const { colors } = useTheme();
     const styles = makeStyles(colors);
 
     const STATUS = {
         pending:  { color: colors.warning, icon: 'time-outline', label: 'Pending' },
-        paid:     { color: colors.success,  icon: 'checkmark-circle-outline', label: 'Paid' },
-        verified: { color: colors.success,  icon: 'shield-checkmark-outline', label: 'Verified' },
-        failed:   { color: colors.error,    icon: 'close-circle-outline', label: 'Failed' },
+        paid:     { color: colors.success, icon: 'checkmark-circle-outline', label: 'Paid' },
+        verified: { color: colors.success, icon: 'shield-checkmark-outline', label: 'Verified' },
+        failed:   { color: colors.error,   icon: 'close-circle-outline', label: 'Failed' },
     };
     const status = STATUS[paymentStatus] || STATUS.pending;
 
-    // Winner card uses a light-green background (same in light & dark mode), so the inner
-    // text needs a dark-on-light color rather than the default theme text color.
-    // Using a very dark forest green ensures WCAG AA contrast on the #ECFDF5 background.
-    const winnerOnLight      = '#064E3B'; // very dark green — high contrast on light-green bg
-    const winnerOnLightMuted = '#065F46'; // slightly lighter dark-green for secondary text
+    // Current pot holder uses the verified-status tint (green-mode-aware).
+    // Past pot holders use the primary tint (coral/themed) — same colour family as the
+    // POT Winner Config "current row" highlight so the visual language stays consistent.
+    const winnerFg     = colors.status.verified.text;
+    const pastWinnerFg = colors.primaryDark;
+
+    const cardStyle =
+        isWinner     ? [styles.card, styles.winnerCard] :
+        isPastWinner ? [styles.card, styles.pastWinnerCard] :
+        styles.card;
 
     return (
-        <View style={[styles.card, isWinner && styles.winnerCard]}>
+        <View style={cardStyle}>
             {isWinner && (
                 <View style={styles.winnerBadge}>
-                    <Ionicons name="trophy" size={10} color={winnerOnLight} />
-                    <Text style={[styles.winnerText, { color: winnerOnLight }]}>POT HOLDER</Text>
+                    <Ionicons name="trophy" size={10} color={winnerFg} />
+                    <Text style={[styles.winnerText, { color: winnerFg }]}>
+                        POT HOLDER{winnerMonth ? ` · MONTH ${winnerMonth}` : ''}
+                    </Text>
+                </View>
+            )}
+            {isPastWinner && (
+                <View style={styles.pastWinnerBadge}>
+                    <Ionicons name="ribbon" size={10} color={pastWinnerFg} />
+                    <Text style={[styles.pastWinnerText, { color: pastWinnerFg }]}>
+                        PAST WINNER{winnerMonth ? ` · MONTH ${winnerMonth}` : ''}
+                    </Text>
                 </View>
             )}
             <View style={styles.row}>
-                <Avatar uri={member.avatar} name={member.name} size={42} />
+                <Avatar uri={member.avatar} name={member.name} size={34} />
                 <View style={styles.info}>
-                    <Text style={[styles.name, isWinner && { color: winnerOnLight }]}>
+                    <Text
+                        style={[
+                            styles.name,
+                            isWinner     && { color: winnerFg },
+                            isPastWinner && { color: pastWinnerFg },
+                        ]}
+                    >
                         {member.name || member.phone}
                     </Text>
-                    <Text style={[styles.phone, isWinner && { color: winnerOnLightMuted }]}>
+                    <Text
+                        style={[
+                            styles.phone,
+                            isWinner     && { color: winnerFg,     opacity: 0.85 },
+                            isPastWinner && { color: pastWinnerFg, opacity: 0.75 },
+                        ]}
+                    >
                         {member.phone}
                     </Text>
                 </View>
@@ -45,7 +72,13 @@ export default function MemberCard({ member, isWinner, paymentStatus, emiAmount 
                     <Ionicons name={status.icon} size={18} color={status.color} />
                     <Text style={[styles.statusText, { color: status.color }]}>{status.label}</Text>
                     {emiAmount ? (
-                        <Text style={[styles.amount, isWinner && { color: winnerOnLight }]}>
+                        <Text
+                            style={[
+                                styles.amount,
+                                isWinner     && { color: winnerFg },
+                                isPastWinner && { color: pastWinnerFg },
+                            ]}
+                        >
                             ₹{emiAmount.toLocaleString()}
                         </Text>
                     ) : null}
@@ -59,40 +92,54 @@ function makeStyles(colors) {
     return StyleSheet.create({
         card: {
             backgroundColor: colors.background,
-            borderRadius: 12,
-            padding: 12,
-            marginBottom: 8,
+            borderRadius: 10,
+            paddingVertical: 8,
+            paddingHorizontal: 10,
+            marginBottom: 6,
             borderWidth: 1,
             borderColor: colors.border,
-            shadowColor: colors.shadow,
-            shadowOffset: { width: 0, height: 1 },
-            shadowOpacity: 0.04,
-            shadowRadius: 4,
-            elevation: 1,
         },
         winnerCard: {
             borderColor: colors.status.verified.border,
             backgroundColor: colors.status.verified.bg,
+        },
+        pastWinnerCard: {
+            borderColor: colors.primary,
+            borderLeftWidth: 3,
+            backgroundColor: colors.primaryLight,
         },
         winnerBadge: {
             flexDirection: 'row',
             alignItems: 'center',
             backgroundColor: colors.primaryLight,
             alignSelf: 'flex-start',
-            paddingHorizontal: 8,
-            paddingVertical: 3,
-            borderRadius: 8,
-            marginBottom: 8,
+            paddingHorizontal: 6,
+            paddingVertical: 2,
+            borderRadius: 6,
+            marginBottom: 4,
             borderWidth: 1,
             borderColor: colors.status.verified.border,
         },
-        winnerText: { fontSize: 10, fontFamily: F.bold, color: colors.primary, marginLeft: 4, letterSpacing: 0.5 },
+        winnerText: { fontSize: 9, fontFamily: F.bold, color: colors.primary, marginLeft: 3, letterSpacing: 0.4 },
+        pastWinnerBadge: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            backgroundColor: colors.background,
+            alignSelf: 'flex-start',
+            paddingHorizontal: 6,
+            paddingVertical: 2,
+            borderRadius: 6,
+            marginBottom: 4,
+            borderWidth: 1,
+            borderColor: colors.primary,
+        },
+        pastWinnerText: { fontSize: 9, fontFamily: F.bold, marginLeft: 3, letterSpacing: 0.4 },
         row: { flexDirection: 'row', alignItems: 'center' },
-        info: { flex: 1, marginLeft: 12 },
-        name: { fontSize: 14, fontFamily: F.semibold, color: colors.text },
-        phone: { fontSize: 12, fontFamily: F.regular, color: colors.textSecondary, marginTop: 2 },
+        info: { flex: 1, marginLeft: 10 },
+        name: { fontSize: 13, fontFamily: F.semibold, color: colors.text },
+        phone: { fontSize: 11, fontFamily: F.regular, color: colors.textSecondary, marginTop: 1 },
         statusWrap: { alignItems: 'flex-end' },
-        statusText: { fontSize: 11, fontFamily: F.medium, marginTop: 2 },
-        amount: { fontSize: 13, fontFamily: F.bold, color: colors.text, marginTop: 3 },
+        statusText: { fontSize: 10, fontFamily: F.medium, marginTop: 1 },
+        amount: { fontSize: 12, fontFamily: F.bold, color: colors.text, marginTop: 2 },
     });
 }

@@ -8,9 +8,10 @@ import { Ionicons } from '@expo/vector-icons';
 import {
     getGroups, getEligibleMembers, createEmiCycle, getPlannedWinner,
     sendBulkNotification, triggerReminders,
-    getAdminUsers, updateUserRole, deleteUser,
+    getAdminUsers, deleteUser, sendOtp, verifyOtp,
     getPendingAccountRequests,
 } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { F } from '../theme';
 import { useInputFocus, focusBorder, webOutlineReset } from '../hooks/useInputFocus';
@@ -58,6 +59,7 @@ function Sheet({ visible, title, onClose, children, colors }) {
 
 export default function AdminControlsScreen({ navigation }) {
     const { colors } = useTheme();
+    const { user: currentUser } = useAuth();
     const { toast, show } = useToast();
     const [pendingCount, setPendingCount] = useState(0);
 
@@ -78,6 +80,10 @@ export default function AdminControlsScreen({ navigation }) {
     const [creatingCycle, setCreatingCycle] = useState(false);
     const [plannedWinnerId, setPlannedWinnerId] = useState(null);
     const [plannedNextMonth, setPlannedNextMonth] = useState(null);
+    const [plannedEmiAmount, setPlannedEmiAmount] = useState(null);
+    const [plannedReducedEmi, setPlannedReducedEmi] = useState(null);
+    const [cycleReducedEmi, setCycleReducedEmi] = useState('');   // editable on confirm step
+    const [reducedFocused, reducedFocusProps] = useInputFocus();
 
     // ── Bulk Notify state ──
     const [showNotify, setShowNotify] = useState(false);
@@ -94,7 +100,17 @@ export default function AdminControlsScreen({ navigation }) {
     const [bodyFocused, bodyFocusProps] = useInputFocus();
     const [userSearchFocused, userSearchFocusProps] = useInputFocus();
     const [loadingUsers, setLoadingUsers] = useState(false);
-    const [updatingUser, setUpdatingUser] = useState({});
+
+    // ── OTP-gated delete (only when target user belongs to one or more groups) ──
+    const [deleteTarget, setDeleteTarget]       = useState(null);   // { user, requiresOtp }
+    const [delOtpCode, setDelOtpCode]           = useState('');
+    const [delOtpError, setDelOtpError]         = useState('');
+    const [sendingDelOtp, setSendingDelOtp]     = useState(false);
+    const [verifyingDelete, setVerifyingDelete] = useState(false);
+    const [delOtpFocused, delOtpFocusProps]     = useInputFocus();
+
+    // Peek a user's group memberships (opened from the Groups chip on the user card).
+    const [groupsPeek, setGroupsPeek] = useState(null);   // { user }
 
     useFocusEffect(useCallback(() => {
         getGroups().then(res => setAllGroups(res.data.groups || [])).catch(() => {});
@@ -108,6 +124,9 @@ export default function AdminControlsScreen({ navigation }) {
         setWinnerId('');
         setPlannedWinnerId(null);
         setPlannedNextMonth(null);
+        setPlannedEmiAmount(null);
+        setPlannedReducedEmi(null);
+        setCycleReducedEmi('');
         setShowCycle(true);
     };
 
@@ -123,6 +142,8 @@ export default function AdminControlsScreen({ navigation }) {
             const planned = planRes.data?.plannedWinnerId || null;
             setPlannedWinnerId(planned);
             setPlannedNextMonth(planRes.data?.nextMonth || null);
+            setPlannedEmiAmount(planRes.data?.plannedEmiAmount ?? null);
+            setPlannedReducedEmi(planRes.data?.plannedReducedEmi ?? null);
             // Pre-select the planned winner if it's still eligible
             if (planned && (eligibleRes.data.members || []).some(m => String(m._id) === String(planned))) {
                 setWinnerId(planned);
@@ -137,18 +158,44 @@ export default function AdminControlsScreen({ navigation }) {
         }
     };
 
+    // Step 2 → Step 3: hop to confirmation with pre-filled reducing EMI for that month.
+    const goToCycleConfirm = () => {
+        if (!winnerId) return;
+        const group = allGroups.find(g => g._id === cycleGroupId);
+        const defaultReduced = plannedReducedEmi ?? group?.reducedEmi ?? '';
+        setCycleReducedEmi(String(defaultReduced || ''));
+        setCycleStep(3);
+    };
+
     const submitCycle = async () => {
         if (!cycleGroupId || !winnerId) return;
+        const re = Number(cycleReducedEmi);
+        if (!Number.isFinite(re) || re <= 0) {
+            show('Reducing EMI must be a positive number', 'warning');
+            return;
+        }
         setCreatingCycle(true);
         try {
-            await createEmiCycle({ groupId: cycleGroupId, winnerId });
+            await createEmiCycle({ groupId: cycleGroupId, winnerId, reducedEmi: re });
             setShowCycle(false);
             show('Cycle created and members notified');
         } catch (err) {
-            Alert.alert('Error', err.response?.data?.error || 'Failed to create cycle');
+            const candidates = [err?.response?.data?.error, err?.response?.data?.message, err?.message];
+            const msg = candidates.find(v => typeof v === 'string' && v.length > 0) || 'Failed to create cycle';
+            show(msg, 'error');
         } finally {
             setCreatingCycle(false);
         }
+    };
+
+    // ── Helpers to display month label for the upcoming draw ──
+    const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const computeMonthName = (group, monthOffset) => {
+        if (!group || !monthOffset) return '';
+        const baseStr = group.startDate || group.createdAt;
+        const base = baseStr ? new Date(baseStr) : new Date();
+        const d = new Date(base.getFullYear(), base.getMonth() + (monthOffset - 1), 1);
+        return `${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`;
     };
 
     // ── Notify handlers ──
@@ -208,42 +255,83 @@ export default function AdminControlsScreen({ navigation }) {
         }
     };
 
-    const handleRoleToggle = (u) => {
-        const newRole = u.role === 'admin' ? 'member' : 'admin';
-        Alert.alert('Change Role', `Make ${u.name || u.phone} a ${newRole}?`, [
-            { text: 'Cancel', style: 'cancel' },
-            {
-                text: 'Confirm', onPress: async () => {
-                    setUpdatingUser(prev => ({ ...prev, [u._id]: true }));
-                    try {
-                        await updateUserRole(u._id, newRole);
-                        setUsers(prev => prev.map(x => x._id === u._id ? { ...x, role: newRole } : x));
-                        show(`${u.name || u.phone} is now a ${newRole}`);
-                    } catch (err) {
-                        Alert.alert('Error', err.response?.data?.error || 'Failed to update role');
-                    } finally {
-                        setUpdatingUser(prev => { const n = { ...prev }; delete n[u._id]; return n; });
-                    }
-                },
-            },
-        ]);
+    // Helper: extract first non-empty string from server error response.
+    const extractErr = (err, fallback) => {
+        const candidates = [err?.response?.data?.error, err?.response?.data?.message, err?.message];
+        return candidates.find(v => typeof v === 'string' && v.length > 0) || fallback;
+    };
+
+    const performDelete = async (userId) => {
+        try {
+            await deleteUser(userId);
+            setUsers(prev => prev.filter(x => x._id !== userId));
+            show('User removed', 'error');
+        } catch (err) {
+            show(extractErr(err, 'Failed to delete user'), 'error');
+        }
     };
 
     const handleDeleteUser = (u) => {
-        Alert.alert('Delete User', `Remove ${u.name || u.phone} permanently?`, [
-            { text: 'Cancel', style: 'cancel' },
-            {
-                text: 'Delete', style: 'destructive', onPress: async () => {
-                    try {
-                        await deleteUser(u._id);
-                        setUsers(prev => prev.filter(x => x._id !== u._id));
-                        show('User removed', 'error');
-                    } catch (err) {
-                        Alert.alert('Error', err.response?.data?.error || 'Failed to delete');
-                    }
-                },
-            },
-        ]);
+        // Defensive — UI hides delete for admins, but guard the handler too.
+        if (u.role === 'admin') {
+            show('Admin accounts cannot be deleted', 'warning');
+            return;
+        }
+        if (String(u._id) === String(currentUser?._id)) {
+            show('You cannot delete your own account', 'warning');
+            return;
+        }
+        const inGroups = (u.groups || []).length > 0;
+        if (!inGroups) {
+            // No group ties — simple confirm is enough.
+            Alert.alert('Delete User', `Remove ${u.name || u.phone} permanently?`, [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Delete', style: 'destructive', onPress: () => performDelete(u._id) },
+            ]);
+            return;
+        }
+        // User belongs to one or more groups — gate behind OTP.
+        setDelOtpCode('');
+        setDelOtpError('');
+        setSendingDelOtp(true);
+        setDeleteTarget({ user: u, requiresOtp: true });
+        sendOtp(currentUser?.phone)
+            .catch(err => {
+                show(extractErr(err, 'Failed to send OTP'), 'error');
+                setDeleteTarget(null);
+            })
+            .finally(() => setSendingDelOtp(false));
+    };
+
+    const handleConfirmDeleteUser = async () => {
+        if (delOtpCode.length < 4) {
+            setDelOtpError('Enter the OTP sent to your phone');
+            return;
+        }
+        if (!deleteTarget?.user) return;
+        setVerifyingDelete(true);
+        setDelOtpError('');
+        try {
+            await verifyOtp(currentUser?.phone, delOtpCode);
+            await performDelete(deleteTarget.user._id);
+            setDeleteTarget(null);
+        } catch (err) {
+            const msg = extractErr(err, '');
+            const looksLikeOtpErr = msg.toLowerCase().includes('otp')
+                || msg.toLowerCase().includes('invalid')
+                || err?.response?.status === 400
+                || err?.response?.status === 401;
+            if (looksLikeOtpErr) setDelOtpError('Invalid OTP. Please try again.');
+            else { show(msg || 'Failed to delete', 'error'); setDeleteTarget(null); }
+        } finally {
+            setVerifyingDelete(false);
+        }
+    };
+
+    const cancelDeleteOtp = () => {
+        setDeleteTarget(null);
+        setDelOtpCode('');
+        setDelOtpError('');
     };
 
     const filteredUsers = users.filter(u =>
@@ -310,8 +398,8 @@ export default function AdminControlsScreen({ navigation }) {
                     icon="people-outline"
                     iconBg={colors.successLight}
                     iconColor={colors.success}
-                    title="Manage Users & Roles"
-                    subtitle="Change roles, remove inactive users"
+                    title="Manage Users"
+                    subtitle="View memberships and remove inactive users"
                     onPress={openUsers}
                     colors={colors}
                 />
@@ -330,7 +418,16 @@ export default function AdminControlsScreen({ navigation }) {
             </ScrollView>
 
             {/* Create Cycle Modal */}
-            <Sheet visible={showCycle} title={cycleStep === 1 ? 'Run Draw: Select Group' : 'Run Draw: Confirm Winner'} onClose={() => setShowCycle(false)} colors={colors}>
+            <Sheet
+                visible={showCycle}
+                title={
+                    cycleStep === 1 ? 'Run Draw: Select Group'
+                    : cycleStep === 2 ? 'Run Draw: Pick Winner'
+                    : 'Run Draw: Confirm'
+                }
+                onClose={() => setShowCycle(false)}
+                colors={colors}
+            >
                 <ScrollView style={styles.cycleScroll} showsVerticalScrollIndicator={false}>
                     {cycleStep === 1 ? (
                         allGroups.filter(g => g.status === 'active').length === 0 ? (
@@ -357,7 +454,7 @@ export default function AdminControlsScreen({ navigation }) {
                                 );
                             })
                         )
-                    ) : (
+                    ) : cycleStep === 2 ? (
                         <>
                             <TouchableOpacity style={styles.backLink} onPress={() => { setCycleStep(1); setWinnerId(''); }}>
                                 <Ionicons name="arrow-back" size={14} color={colors.primary} />
@@ -399,16 +496,87 @@ export default function AdminControlsScreen({ navigation }) {
                                 })
                             )}
                         </>
+                    ) : (
+                        // ── Step 3: Confirm draw ──
+                        (() => {
+                            const group     = allGroups.find(g => g._id === cycleGroupId);
+                            const winner    = eligible.find(m => m._id === winnerId);
+                            const monthName = computeMonthName(group, plannedNextMonth);
+                            const winnerEmi = plannedEmiAmount ?? group?.emiAmount;
+                            return (
+                                <>
+                                    <TouchableOpacity style={styles.backLink} onPress={() => setCycleStep(2)}>
+                                        <Ionicons name="arrow-back" size={14} color={colors.primary} />
+                                        <Text style={styles.backLinkText}> Change winner</Text>
+                                    </TouchableOpacity>
+
+                                    <View style={styles.confirmCard}>
+                                        <Text style={styles.confirmHint}>POT WINNER FOR</Text>
+                                        <Text style={styles.confirmMonth}>
+                                            Month {plannedNextMonth}{monthName ? ` · ${monthName}` : ''}
+                                        </Text>
+                                        <View style={styles.confirmDivider} />
+                                        <View style={styles.confirmWinnerRow}>
+                                            <View style={styles.confirmAvatar}>
+                                                <Text style={styles.confirmAvatarTxt}>
+                                                    {(winner?.name || winner?.phone || '?').charAt(0).toUpperCase()}
+                                                </Text>
+                                            </View>
+                                            <View style={{ flex: 1 }}>
+                                                <Text style={styles.confirmWinnerName}>{winner?.name || 'Unknown'}</Text>
+                                                <Text style={styles.confirmWinnerPhone}>+91 {winner?.phone}</Text>
+                                            </View>
+                                        </View>
+                                    </View>
+
+                                    <View style={styles.field}>
+                                        <Text style={styles.fieldLabel}>Winner EMI (fixed for this winner)</Text>
+                                        <View style={[styles.fieldInput, styles.fieldInputReadonly]}>
+                                            <Text style={styles.fieldInputReadonlyTxt}>
+                                                ₹{Number(winnerEmi || 0).toLocaleString('en-IN')}
+                                            </Text>
+                                        </View>
+                                    </View>
+
+                                    <View style={styles.field}>
+                                        <Text style={styles.fieldLabel}>Reducing EMI for non-winners (this month)</Text>
+                                        <View style={[styles.fieldInputRow, focusBorder(colors, reducedFocused)]}>
+                                            <Text style={styles.fieldPrefix}>₹</Text>
+                                            <TextInput
+                                                style={[styles.fieldInputBare, webOutlineReset]}
+                                                value={cycleReducedEmi}
+                                                onChangeText={v => setCycleReducedEmi(v.replace(/[^0-9.]/g, ''))}
+                                                keyboardType="numeric"
+                                                placeholder="0"
+                                                placeholderTextColor={colors.textSecondary}
+                                                {...reducedFocusProps}
+                                            />
+                                        </View>
+                                        <Text style={styles.fieldHint}>
+                                            Default {plannedReducedEmi != null ? 'from POT plan' : 'from group config'}. Edit to override for this draw only.
+                                        </Text>
+                                    </View>
+                                </>
+                            );
+                        })()
                     )}
                 </ScrollView>
                 {cycleStep === 2 && winnerId ? (
+                    <TouchableOpacity
+                        style={styles.sheetBtn}
+                        onPress={goToCycleConfirm}
+                        activeOpacity={0.85}
+                    >
+                        <Text style={styles.sheetBtnText}>Continue</Text>
+                    </TouchableOpacity>
+                ) : cycleStep === 3 ? (
                     <TouchableOpacity
                         style={[styles.sheetBtn, creatingCycle && { opacity: 0.6 }]}
                         onPress={submitCycle}
                         disabled={creatingCycle}
                         activeOpacity={0.85}
                     >
-                        {creatingCycle ? <ActivityIndicator color="#fff" /> : <Text style={styles.sheetBtnText}>Run Draw & Notify</Text>}
+                        {creatingCycle ? <ActivityIndicator color="#fff" /> : <Text style={styles.sheetBtnText}>Confirm & Run Draw</Text>}
                     </TouchableOpacity>
                 ) : null}
             </Sheet>
@@ -479,42 +647,171 @@ export default function AdminControlsScreen({ navigation }) {
                 <ScrollView style={styles.userList} showsVerticalScrollIndicator={false}>
                     {loadingUsers ? (
                         <ActivityIndicator color={colors.primary} style={{ marginTop: 24 }} />
+                    ) : filteredUsers.length === 0 ? (
+                        <View style={styles.userEmptyBox}>
+                            <Ionicons name="people-outline" size={36} color={colors.textSecondary} />
+                            <Text style={styles.userEmptyTxt}>{userSearch ? 'No matching users' : 'No users yet'}</Text>
+                        </View>
                     ) : (
-                        filteredUsers.map(u => (
-                            <View key={u._id} style={styles.userRow}>
-                                <View style={styles.userInfo}>
-                                    <Text style={styles.userName}>{u.name || '(no name)'}</Text>
-                                    <Text style={styles.userPhone}>{u.phone}</Text>
-                                </View>
-                                <View style={styles.userRight}>
-                                    <View style={[styles.roleBadge, u.role === 'admin' && styles.roleBadgeAdmin]}>
-                                        <Text style={[styles.roleBadgeText, u.role === 'admin' && { color: colors.primary }]}>
-                                            {u.role}
-                                        </Text>
-                                    </View>
-                                    <TouchableOpacity
-                                        style={styles.toggleBtn}
-                                        onPress={() => handleRoleToggle(u)}
-                                        disabled={!!updatingUser[u._id]}
-                                    >
-                                        {updatingUser[u._id] ? (
-                                            <ActivityIndicator size="small" color={colors.primary} />
-                                        ) : (
-                                            <Text style={styles.toggleText}>
-                                                {u.role === 'admin' ? '→ Member' : '→ Admin'}
+                        filteredUsers.map(u => {
+                            const initial = (u.name || u.phone || '?').charAt(0).toUpperCase();
+                            const grps    = u.groups || [];
+                            const isAdmin = u.role === 'admin';
+                            return (
+                                <View key={u._id} style={[styles.userCard, isAdmin && styles.userCardAdmin]}>
+                                    <View style={styles.userCardTop}>
+                                        <View style={[styles.userCardAvatar, isAdmin && styles.userCardAvatarAdmin]}>
+                                            <Text style={[styles.userCardAvatarTxt, isAdmin && { color: '#fff' }]}>
+                                                {initial}
                                             </Text>
-                                        )}
-                                    </TouchableOpacity>
-                                    <TouchableOpacity onPress={() => handleDeleteUser(u)} style={{ marginLeft: 6 }}>
-                                        <Ionicons name="close-circle" size={18} color={colors.error} />
-                                    </TouchableOpacity>
+                                        </View>
+                                        <View style={styles.userCardMid}>
+                                            <Text style={styles.userCardName} numberOfLines={1}>
+                                                {u.name || '(no name)'}
+                                            </Text>
+                                            <Text style={styles.userCardPhone}>+91 {u.phone}</Text>
+                                        </View>
+                                        <View style={styles.userCardRight}>
+                                            {/* Groups chip — tap to see the list. Only shown when user is in at least one group. */}
+                                            {grps.length > 0 ? (
+                                                <TouchableOpacity
+                                                    style={styles.userGroupsBtn}
+                                                    onPress={() => setGroupsPeek({ user: u })}
+                                                    activeOpacity={0.7}
+                                                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                                                >
+                                                    <Ionicons name="people" size={11} color={colors.primary} style={{ marginRight: 4 }} />
+                                                    <Text style={styles.userGroupsBtnTxt}>
+                                                        Groups · {grps.length}
+                                                    </Text>
+                                                </TouchableOpacity>
+                                            ) : null}
+                                            {/* Admin → protected lock; member → delete trash. Member role tag dropped per request. */}
+                                            {isAdmin ? (
+                                                <View style={styles.userLockBtn}>
+                                                    <Ionicons name="lock-closed" size={12} color={colors.textSecondary} />
+                                                </View>
+                                            ) : (
+                                                <TouchableOpacity
+                                                    style={styles.userDelBtn}
+                                                    onPress={() => handleDeleteUser(u)}
+                                                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                                >
+                                                    <Ionicons name="trash-outline" size={14} color={colors.error} />
+                                                </TouchableOpacity>
+                                            )}
+                                        </View>
+                                    </View>
                                 </View>
-                            </View>
-                        ))
+                            );
+                        })
                     )}
                     <View style={{ height: 20 }} />
                 </ScrollView>
             </Sheet>
+
+            {/* Groups peek — small popover listing the groups a user belongs to */}
+            <Modal visible={!!groupsPeek} transparent animationType="fade" onRequestClose={() => setGroupsPeek(null)}>
+                <TouchableOpacity
+                    style={styles.groupsPeekOverlay}
+                    activeOpacity={1}
+                    onPress={() => setGroupsPeek(null)}
+                >
+                    {groupsPeek ? (
+                        <TouchableOpacity activeOpacity={1} style={styles.groupsPeekBox}>
+                            <View style={styles.groupsPeekHeader}>
+                                <Ionicons name="people" size={16} color={colors.primary} />
+                                <Text style={styles.groupsPeekTitle} numberOfLines={1}>
+                                    {groupsPeek.user.name || groupsPeek.user.phone}
+                                </Text>
+                                <TouchableOpacity onPress={() => setGroupsPeek(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                                    <Ionicons name="close" size={18} color={colors.textSecondary} />
+                                </TouchableOpacity>
+                            </View>
+                            <Text style={styles.groupsPeekSub}>
+                                Member of {(groupsPeek.user.groups || []).length} group{(groupsPeek.user.groups || []).length === 1 ? '' : 's'}
+                            </Text>
+                            <View style={styles.groupsPeekList}>
+                                {(groupsPeek.user.groups || []).map(g => (
+                                    <View key={g._id} style={styles.groupsPeekItem}>
+                                        <Ionicons name="ellipse" size={5} color={colors.primary} style={{ marginRight: 8 }} />
+                                        <Text style={styles.groupsPeekItemTxt} numberOfLines={1}>{g.name}</Text>
+                                    </View>
+                                ))}
+                            </View>
+                        </TouchableOpacity>
+                    ) : null}
+                </TouchableOpacity>
+            </Modal>
+
+            {/* OTP-gated Delete User modal (only when user belongs to one or more groups) */}
+            <Modal visible={!!deleteTarget} transparent animationType="fade" onRequestClose={cancelDeleteOtp}>
+                <View style={styles.delOtpOverlay}>
+                    {deleteTarget ? (
+                        <View style={styles.delOtpBox}>
+                            <View style={styles.delOtpIconWrap}>
+                                <Ionicons name="shield-checkmark-outline" size={30} color={colors.error} />
+                            </View>
+                            <Text style={styles.delOtpTitle}>Confirm Delete</Text>
+                            <Text style={styles.delOtpSub}>
+                                <Text style={styles.delOtpEmph}>{deleteTarget.user.name || deleteTarget.user.phone}</Text>
+                                {'  '}is a member of{'  '}
+                                <Text style={styles.delOtpEmph}>{(deleteTarget.user.groups || []).length} group{(deleteTarget.user.groups || []).length === 1 ? '' : 's'}</Text>.
+                                {'\n'}Deleting will also remove them from those groups.
+                            </Text>
+
+                            <View style={styles.delGroupsBox}>
+                                {(deleteTarget.user.groups || []).slice(0, 4).map(g => (
+                                    <Text key={g._id} style={styles.delGroupsItem}>• {g.name}</Text>
+                                ))}
+                                {(deleteTarget.user.groups || []).length > 4 ? (
+                                    <Text style={styles.delGroupsMore}>… and {deleteTarget.user.groups.length - 4} more</Text>
+                                ) : null}
+                            </View>
+
+                            <Text style={styles.delOtpHint}>
+                                {sendingDelOtp
+                                    ? 'Sending OTP…'
+                                    : `OTP sent to +91 ${currentUser?.phone || '—'}`}
+                            </Text>
+
+                            <TextInput
+                                style={[styles.delOtpInput, webOutlineReset, focusBorder(colors, delOtpFocused), delOtpError && styles.delOtpInputError]}
+                                value={delOtpCode}
+                                onChangeText={v => { setDelOtpCode(v); setDelOtpError(''); }}
+                                placeholder="Enter OTP"
+                                placeholderTextColor={colors.textSecondary}
+                                keyboardType="number-pad"
+                                maxLength={6}
+                                {...delOtpFocusProps}
+                                autoFocus
+                                textAlign="center"
+                                editable={!sendingDelOtp}
+                            />
+                            {delOtpError ? (
+                                <View style={styles.delOtpErrorRow}>
+                                    <Ionicons name="alert-circle" size={13} color={colors.error} />
+                                    <Text style={styles.delOtpErrorTxt}>{delOtpError}</Text>
+                                </View>
+                            ) : null}
+
+                            <TouchableOpacity
+                                style={[styles.delOtpConfirmBtn, (verifyingDelete || sendingDelOtp) && { opacity: 0.6 }]}
+                                onPress={handleConfirmDeleteUser}
+                                disabled={verifyingDelete || sendingDelOtp}
+                                activeOpacity={0.85}
+                            >
+                                {verifyingDelete
+                                    ? <ActivityIndicator color="#fff" />
+                                    : <Text style={styles.delOtpConfirmTxt}>Confirm Delete</Text>}
+                            </TouchableOpacity>
+                            <TouchableOpacity style={styles.delOtpCancelBtn} onPress={cancelDeleteOtp} disabled={verifyingDelete}>
+                                <Text style={styles.delOtpCancelTxt}>Cancel</Text>
+                            </TouchableOpacity>
+                        </View>
+                    ) : null}
+                </View>
+            </Modal>
 
             <Toast {...toast} />
         </View>
@@ -640,6 +937,36 @@ function makeStyles(colors) {
             backgroundColor: colors.backgroundSecondary,
         },
         textarea:    { height: 80, textAlignVertical: 'top', paddingTop: 12 },
+        fieldInputReadonly: { justifyContent: 'center' },
+        fieldInputReadonlyTxt: { fontSize: 16, fontFamily: F.semibold, color: colors.text },
+        fieldInputRow: {
+            flexDirection: 'row', alignItems: 'center',
+            height: 52, paddingHorizontal: 14,
+            borderWidth: 1, borderColor: colors.border, borderRadius: 10,
+            backgroundColor: colors.backgroundSecondary,
+        },
+        fieldPrefix:   { fontSize: 15, fontFamily: F.semibold, color: colors.primary, marginRight: 6 },
+        fieldInputBare:{ flex: 1, fontSize: 15, fontFamily: F.regular, color: colors.text, height: 52 },
+        fieldHint:     { fontSize: 11, fontFamily: F.regular, color: colors.textSecondary, marginTop: 4 },
+        // Confirm card (step 3)
+        confirmCard: {
+            backgroundColor: colors.primaryLight,
+            borderRadius: 14, padding: 16,
+            borderWidth: 1, borderColor: colors.primary,
+            marginBottom: 16,
+        },
+        confirmHint:   { fontSize: 10, fontFamily: F.semibold, color: colors.primary, letterSpacing: 1 },
+        confirmMonth:  { fontSize: 18, fontFamily: F.bold, color: colors.primaryDark, marginTop: 2 },
+        confirmDivider:{ height: 1, backgroundColor: colors.primary, opacity: 0.25, marginVertical: 12 },
+        confirmWinnerRow: { flexDirection: 'row', alignItems: 'center' },
+        confirmAvatar: {
+            width: 44, height: 44, borderRadius: 22,
+            backgroundColor: colors.primary,
+            alignItems: 'center', justifyContent: 'center', marginRight: 12,
+        },
+        confirmAvatarTxt:   { fontSize: 18, fontFamily: F.bold, color: '#fff' },
+        confirmWinnerName:  { fontSize: 15, fontFamily: F.bold, color: colors.primaryDark },
+        confirmWinnerPhone: { fontSize: 12, fontFamily: F.regular, color: colors.primaryDark, opacity: 0.75, marginTop: 1 },
         charCount:   { fontSize: 11, fontFamily: F.regular, color: colors.textSecondary, textAlign: 'right', marginTop: 4 },
         groupChip: {
             backgroundColor: colors.backgroundSecondary,
@@ -664,38 +991,115 @@ function makeStyles(colors) {
             marginBottom: 12,
         },
         searchInput:   { flex: 1, fontSize: 13, fontFamily: F.regular, color: colors.text },
-        userList:      { maxHeight: 360 },
-        userRow: {
-            flexDirection: 'row',
-            alignItems: 'center',
-            paddingVertical: 10,
-            borderBottomWidth: 1,
-            borderBottomColor: colors.border,
+        userList:      { maxHeight: 460 },
+        // ── Card-based user row (compact) ──
+        userCard: {
+            backgroundColor: colors.backgroundSecondary,
+            borderRadius: 10, borderWidth: 1, borderColor: colors.border,
+            paddingVertical: 8, paddingHorizontal: 10, marginBottom: 6,
         },
-        userInfo:         { flex: 1 },
-        userName:         { fontSize: 13, fontFamily: F.semibold, color: colors.text },
-        userPhone:        { fontSize: 12, fontFamily: F.regular, color: colors.textSecondary, marginTop: 1 },
-        userRight:        { flexDirection: 'row', alignItems: 'center', gap: 6 },
-        roleBadge: {
-            borderRadius: 8,
-            paddingHorizontal: 8,
-            paddingVertical: 3,
+        userCardAdmin: {
+            borderColor: colors.primary, borderWidth: 1.5,
+            backgroundColor: colors.primaryLight,
+        },
+        userLockBtn: {
+            width: 28, height: 28, borderRadius: 7,
             backgroundColor: colors.backgroundTertiary,
-            borderWidth: 1,
-            borderColor: colors.border,
+            alignItems: 'center', justifyContent: 'center',
+            borderWidth: 1, borderColor: colors.border,
         },
-        roleBadgeAdmin:   { backgroundColor: colors.primaryLight, borderColor: colors.status.rejected.border },
-        roleBadgeText:    { fontSize: 10, fontFamily: F.semibold, color: colors.textSecondary },
-        toggleBtn: {
-            backgroundColor: colors.backgroundTertiary,
-            borderRadius: 8,
-            paddingHorizontal: 8,
-            paddingVertical: 5,
-            minWidth: 72,
-            alignItems: 'center',
-            borderWidth: 1,
-            borderColor: colors.border,
+        userCardTop:    { flexDirection: 'row', alignItems: 'center' },
+        userCardAvatar: {
+            width: 32, height: 32, borderRadius: 16,
+            backgroundColor: colors.primaryLight,
+            alignItems: 'center', justifyContent: 'center',
+            marginRight: 10, borderWidth: 1, borderColor: colors.border,
         },
-        toggleText: { fontSize: 11, fontFamily: F.semibold, color: colors.primary },
+        userCardAvatarAdmin: { backgroundColor: colors.primary, borderColor: colors.primary },
+        userCardAvatarTxt:   { fontSize: 13, fontFamily: F.bold, color: colors.primary },
+        userCardMid:         { flex: 1 },
+        userCardName:        { fontSize: 13, fontFamily: F.semibold, color: colors.text },
+        userCardPhone:       { fontSize: 11, fontFamily: F.regular, color: colors.textSecondary, marginTop: 1 },
+        userCardRight:       { flexDirection: 'row', alignItems: 'center', gap: 6 },
+        userDelBtn: {
+            width: 28, height: 28, borderRadius: 7,
+            backgroundColor: colors.errorLight,
+            alignItems: 'center', justifyContent: 'center',
+            borderWidth: 1, borderColor: colors.error,
+        },
+        // Groups chip (tap to peek)
+        userGroupsBtn: {
+            flexDirection: 'row', alignItems: 'center',
+            backgroundColor: colors.primaryLight,
+            paddingHorizontal: 8, paddingVertical: 4,
+            borderRadius: 10, borderWidth: 1, borderColor: colors.primary,
+        },
+        userGroupsBtnTxt: { fontSize: 10, fontFamily: F.semibold, color: colors.primaryDark },
+
+        userEmptyBox: { alignItems: 'center', paddingVertical: 28 },
+        userEmptyTxt: { fontSize: 12, fontFamily: F.regular, color: colors.textSecondary, marginTop: 8 },
+
+        // Groups peek modal
+        groupsPeekOverlay: {
+            flex: 1, backgroundColor: 'rgba(0,0,0,0.55)',
+            justifyContent: 'center', alignItems: 'center', padding: 28,
+        },
+        groupsPeekBox: {
+            width: '100%', maxWidth: 360,
+            backgroundColor: colors.background,
+            borderRadius: 14, padding: 16,
+            borderWidth: 1, borderColor: colors.border,
+        },
+        groupsPeekHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+        groupsPeekTitle:  { flex: 1, fontSize: 14, fontFamily: F.bold, color: colors.text },
+        groupsPeekSub:    { fontSize: 11, fontFamily: F.regular, color: colors.textSecondary, marginTop: 4, marginBottom: 10 },
+        groupsPeekList:   { gap: 4 },
+        groupsPeekItem:   { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 8, backgroundColor: colors.backgroundSecondary, borderRadius: 8, borderWidth: 1, borderColor: colors.border },
+        groupsPeekItemTxt:{ fontSize: 13, fontFamily: F.medium, color: colors.text, flex: 1 },
+
+        // ── OTP-delete modal ──
+        delOtpOverlay: {
+            flex: 1, backgroundColor: 'rgba(0,0,0,0.55)',
+            justifyContent: 'center', alignItems: 'center', padding: 24,
+        },
+        delOtpBox: {
+            width: '100%', maxWidth: 420,
+            backgroundColor: colors.background,
+            borderRadius: 18, padding: 22,
+            borderWidth: 1, borderColor: colors.border,
+        },
+        delOtpIconWrap: {
+            width: 56, height: 56, borderRadius: 28,
+            backgroundColor: colors.errorLight,
+            alignItems: 'center', justifyContent: 'center',
+            alignSelf: 'center', marginBottom: 12,
+        },
+        delOtpTitle: { fontSize: 17, fontFamily: F.bold, color: colors.text, textAlign: 'center', marginBottom: 8 },
+        delOtpSub:   { fontSize: 12, fontFamily: F.regular, color: colors.textSecondary, textAlign: 'center', lineHeight: 18, marginBottom: 12 },
+        delOtpEmph:  { fontFamily: F.semibold, color: colors.text },
+        delGroupsBox: {
+            backgroundColor: colors.backgroundSecondary,
+            borderRadius: 10, borderWidth: 1, borderColor: colors.border,
+            paddingHorizontal: 12, paddingVertical: 8, marginBottom: 14,
+        },
+        delGroupsItem:  { fontSize: 12, fontFamily: F.medium, color: colors.text, paddingVertical: 2 },
+        delGroupsMore:  { fontSize: 11, fontFamily: F.regular, color: colors.textSecondary, paddingTop: 2 },
+        delOtpHint:     { fontSize: 11, fontFamily: F.regular, color: colors.textSecondary, textAlign: 'center', marginBottom: 8 },
+        delOtpInput: {
+            width: '100%', height: 52, borderRadius: 10, borderWidth: 1,
+            borderColor: colors.border, backgroundColor: colors.backgroundSecondary,
+            fontSize: 20, fontFamily: F.bold, color: colors.text,
+            letterSpacing: 6, textAlign: 'center', marginBottom: 4,
+        },
+        delOtpInputError: { borderColor: colors.error },
+        delOtpErrorRow:   { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 8 },
+        delOtpErrorTxt:   { fontSize: 12, fontFamily: F.regular, color: colors.error },
+        delOtpConfirmBtn: {
+            height: 50, borderRadius: 12, backgroundColor: colors.error,
+            alignItems: 'center', justifyContent: 'center', marginTop: 8,
+        },
+        delOtpConfirmTxt: { fontSize: 14, fontFamily: F.semibold, color: '#fff' },
+        delOtpCancelBtn:  { marginTop: 8, paddingVertical: 10, alignItems: 'center' },
+        delOtpCancelTxt:  { fontSize: 13, fontFamily: F.medium, color: colors.textSecondary },
     });
 }

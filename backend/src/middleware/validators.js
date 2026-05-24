@@ -65,13 +65,13 @@ const pin = (field = 'pin') => body(field)
 const sendOtpValidations       = [phone()];
 const verifyOtpValidations     = [phone(), otp()];
 const loginPasswordValidations = [phone(), password()];
-const signupValidations        = [phone(), otp(), password(), requiredString('name', 1)];
+const signupValidations        = [phone(), otp(), password(), optionalString('name'), optionalString('firstName'), optionalString('lastName')];
 const resetPasswordValidations = [phone(), otp(), password('newPassword')];
 
 // ─── PIN Auth Validators ───
 const checkUserTypeValidations = [phone()];
 const loginWithPinValidations  = [phone(), pin()];
-const signupWithPinValidations = [phone(), otp(), pin(), requiredString('name', 1)];
+const signupWithPinValidations = [phone(), otp(), pin(), optionalString('name'), optionalString('firstName'), optionalString('lastName')];
 const setPinValidations        = [pin()];
 const resetPinValidations      = [phone(), otp(), pin()];
 
@@ -93,8 +93,8 @@ const createGroupValidations = [
     body('emiAmount').isFloat({ min: 100 }).withMessage('EMI amount must be at least 100'),
     body('reducedEmi').isFloat({ min: 0 }).withMessage('Reduced EMI must be 0 or more'),
     body('totalMonths').isInt({ min: 1, max: 120 }).withMessage('Total months must be 1-120'),
-    body('minMembers').optional().isInt({ min: 20, max: 100 }).withMessage('Min members 20-100'),
-    body('maxMembers').optional().isInt({ min: 20, max: 100 }).withMessage('Max members 20-100'),
+    body('minMembers').optional().isInt({ min: 2, max: 100 }).withMessage('Min members 2-100'),
+    body('maxMembers').optional().isInt({ min: 2, max: 100 }).withMessage('Max members 2-100'),
 ];
 
 const updateGroupValidations = [

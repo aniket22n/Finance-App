@@ -29,20 +29,30 @@ export default function ProfileScreen({ navigation }) {
     const { user, updateUser, logout } = useAuth();
     const { colors, isDark, setIsDark, primaryTheme, setPrimaryTheme } = useTheme();
     const [showEdit, setShowEdit] = useState(false);
-    const [name, setName] = useState(user?.name || '');
+    // Prefer firstName/lastName; fall back to splitting legacy `name` so first edit pre-fills sensibly.
+    const splitLegacyName = (n) => {
+        const parts = String(n || '').trim().split(/\s+/);
+        return { first: parts[0] || '', last: parts.slice(1).join(' ') };
+    };
+    const legacy = splitLegacyName(user?.name);
+    const [firstName, setFirstName] = useState(user?.firstName || legacy.first);
+    const [lastName,  setLastName]  = useState(user?.lastName  || legacy.last);
     const [email, setEmail] = useState(user?.email || '');
     const [saving, setSaving] = useState(false);
     const { toast, show } = useToast();
-    const [nameFocused, nameFocusProps] = useInputFocus();
+    const [firstFocused, firstFocusProps] = useInputFocus();
+    const [lastFocused, lastFocusProps]   = useInputFocus();
     const [emailFocused, emailFocusProps] = useInputFocus();
 
     const isAdmin = user?.role === 'admin';
     const initials = (user?.name || user?.phone || 'U').charAt(0).toUpperCase();
 
     const handleSave = async () => {
+        if (!firstName.trim()) return Alert.alert('Required', 'First name is required');
+        if (!lastName.trim())  return Alert.alert('Required', 'Last name is required');
         setSaving(true);
         try {
-            const res = await updateProfile({ name, email });
+            const res = await updateProfile({ firstName: firstName.trim(), lastName: lastName.trim(), email });
             updateUser(res.data.user);
             setShowEdit(false);
             show('Profile updated');
@@ -112,7 +122,13 @@ export default function ProfileScreen({ navigation }) {
                     <MenuItem
                         icon="create-outline"
                         label="Edit Profile"
-                        onPress={() => { setName(user?.name || ''); setEmail(user?.email || ''); setShowEdit(true); }}
+                        onPress={() => {
+                            const lg = splitLegacyName(user?.name);
+                            setFirstName(user?.firstName || lg.first);
+                            setLastName(user?.lastName  || lg.last);
+                            setEmail(user?.email || '');
+                            setShowEdit(true);
+                        }}
                         colors={colors}
                     />
                     <View style={styles.menuDivider} />
@@ -207,15 +223,28 @@ export default function ProfileScreen({ navigation }) {
                         </View>
 
                         <View style={styles.field}>
-                            <Text style={styles.fieldLabel}>Full Name</Text>
+                            <Text style={styles.fieldLabel}>First Name</Text>
                             <TextInput
-                                style={[styles.input, webOutlineReset, focusBorder(colors, nameFocused)]}
-                                value={name}
-                                onChangeText={setName}
-                                placeholder="Your full name"
+                                style={[styles.input, webOutlineReset, focusBorder(colors, firstFocused)]}
+                                value={firstName}
+                                onChangeText={setFirstName}
+                                placeholder="First name"
                                 placeholderTextColor={colors.textSecondary}
+                                autoCapitalize="words"
                                 autoFocus
-                                {...nameFocusProps}
+                                {...firstFocusProps}
+                            />
+                        </View>
+                        <View style={styles.field}>
+                            <Text style={styles.fieldLabel}>Last Name</Text>
+                            <TextInput
+                                style={[styles.input, webOutlineReset, focusBorder(colors, lastFocused)]}
+                                value={lastName}
+                                onChangeText={setLastName}
+                                placeholder="Last name"
+                                placeholderTextColor={colors.textSecondary}
+                                autoCapitalize="words"
+                                {...lastFocusProps}
                             />
                         </View>
                         <View style={styles.field}>

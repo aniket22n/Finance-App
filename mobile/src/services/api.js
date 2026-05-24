@@ -117,7 +117,12 @@ export const getPendingPayments = () => api.get('/payments/pending/all');
 export const verifyPayment = (id, status, notes) => api.put(`/payments/${id}/verify`, { status, notes });
 
 // ── EMI (admin) ──
+// data: { groupId, winnerId, reducedEmi?, emiAmount? }
 export const createEmiCycle = (data) => api.post('/emi/cycle', data);
+export const configurePot = (groupId, potConfig) =>
+    api.post(`/admin/groups/${groupId}/configure-pot`, { potConfig });
+export const activateGroup = (groupId) =>
+    api.post(`/admin/groups/${groupId}/activate`);
 
 // ── Config ──
 export const getPaymentConfig = () => api.get('/admin/config');
