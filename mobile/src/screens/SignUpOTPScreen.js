@@ -1,13 +1,14 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import {
     View, Text, TextInput, TouchableOpacity, StyleSheet,
-    KeyboardAvoidingView, Platform, ActivityIndicator, Alert,
+    KeyboardAvoidingView, Platform, ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { sendOtp } from '../services/api';
 import { apiErrMsg } from '../utils/error';
 import { F } from '../theme';
+import Toast, { useToast } from '../components/Toast';
 import { webOutlineReset } from '../hooks/useInputFocus';
 
 const OTP_LENGTH = 4;
@@ -20,6 +21,7 @@ export default function SignUpOTPScreen({ route, navigation }) {
     const [loading, setLoading] = useState(false);
     const [resending, setResending] = useState(false);
     const [secondsLeft, setSecondsLeft] = useState(RESEND_SECONDS);
+    const { toast, show } = useToast();
     const refs = useRef([]);
 
     const otp = digits.join('');
@@ -75,7 +77,7 @@ export default function SignUpOTPScreen({ route, navigation }) {
             setDigits(Array(OTP_LENGTH).fill(''));
             refs.current[0]?.focus();
         } catch (err) {
-            Alert.alert('Error', apiErrMsg(err, 'Could not resend OTP'));
+            show(apiErrMsg(err, 'Could not resend OTP'), 'error');
         } finally {
             setResending(false);
         }
@@ -145,6 +147,7 @@ export default function SignUpOTPScreen({ route, navigation }) {
                         )}
                 </TouchableOpacity>
             </View>
+            <Toast {...toast} />
         </KeyboardAvoidingView>
     );
 }

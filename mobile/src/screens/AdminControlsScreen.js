@@ -152,7 +152,7 @@ export default function AdminControlsScreen({ navigation }) {
             }
             setCycleStep(2);
         } catch (err) {
-            Alert.alert('Error', 'Failed to load eligible members');
+            show('Failed to load eligible members', 'error');
         } finally {
             setLoadingEligible(false);
         }
@@ -203,7 +203,7 @@ export default function AdminControlsScreen({ navigation }) {
 
     const submitNotify = async () => {
         if (!notifyTitle.trim() || !notifyBody.trim()) {
-            Alert.alert('Required', 'Enter both title and message');
+            show('Enter both title and message', 'warning');
             return;
         }
         setSending(true);
@@ -214,7 +214,7 @@ export default function AdminControlsScreen({ navigation }) {
             setShowNotify(false);
             show(`Sent to ${res.data.sent || 0} members`);
         } catch (err) {
-            Alert.alert('Error', err.response?.data?.error || 'Failed to send');
+            show(err.response?.data?.error || 'Failed to send', 'error');
         } finally {
             setSending(false);
         }
@@ -233,7 +233,7 @@ export default function AdminControlsScreen({ navigation }) {
                             await triggerReminders();
                             show('Reminders sent to all members');
                         } catch (err) {
-                            Alert.alert('Error', err.response?.data?.error || 'Failed to trigger');
+                            show(err.response?.data?.error || 'Failed to trigger', 'error');
                         }
                     },
                 },
@@ -249,7 +249,7 @@ export default function AdminControlsScreen({ navigation }) {
             const res = await getAdminUsers({ limit: 100 });
             setUsers(res.data.users || []);
         } catch (err) {
-            Alert.alert('Error', 'Failed to load users');
+            show('Failed to load users', 'error');
         } finally {
             setLoadingUsers(false);
         }
@@ -412,7 +412,7 @@ export default function AdminControlsScreen({ navigation }) {
                     iconColor={colors.info}
                     title="Backup & Export"
                     subtitle="Export all data as JSON (coming soon)"
-                    onPress={() => Alert.alert('Coming Soon', 'This feature will be available in a future update.')}
+                    onPress={() => show('Coming soon — backup will be available in a future update.', 'info')}
                     colors={colors}
                 />
             </ScrollView>

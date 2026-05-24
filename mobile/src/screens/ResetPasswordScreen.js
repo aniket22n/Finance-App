@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import {
     View, Text, TextInput, TouchableOpacity, StyleSheet,
-    KeyboardAvoidingView, Platform, ActivityIndicator, Alert,
+    KeyboardAvoidingView, Platform, ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
@@ -15,6 +15,7 @@ export default function ResetPasswordScreen({ route, navigation }) {
     const { phone, otp } = route.params || {};
     const [newPassword, setNewPassword] = useState('');
     const [confirm, setConfirm] = useState('');
+    const [pwError, setPwError] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [showConfirm, setShowConfirm] = useState(false);
     const [loading, setLoading] = useState(false);
@@ -25,8 +26,9 @@ export default function ResetPasswordScreen({ route, navigation }) {
     const canSubmit = newPassword.length >= 6 && confirm === newPassword;
 
     const handleSubmit = async () => {
-        if (newPassword.length < 6) return Alert.alert('Invalid', 'Password must be at least 6 characters');
-        if (confirm !== newPassword) return Alert.alert('Mismatch', 'Passwords do not match');
+        if (newPassword.length < 6) { setPwError('Password must be at least 6 characters'); return; }
+        if (confirm !== newPassword) { setPwError('Passwords do not match'); return; }
+        setPwError('');
 
         setLoading(true);
         try {
@@ -36,7 +38,7 @@ export default function ResetPasswordScreen({ route, navigation }) {
                 navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
             }, 800);
         } catch (err) {
-            Alert.alert('Error', err.response?.data?.error || 'Could not reset password');
+            setPwError(err.response?.data?.error || 'Could not reset password');
         } finally {
             setLoading(false);
         }
@@ -74,11 +76,11 @@ export default function ResetPasswordScreen({ route, navigation }) {
                     </TouchableOpacity>
                 </View>
 
-                <View style={[styles.passwordRow, focusBorder(colors, confirmFocused), { marginTop: 14 }]}>
+                <View style={[styles.passwordRow, focusBorder(colors, confirmFocused), { marginTop: 14 }, pwError && styles.inputError]}>
                     <TextInput
                         style={[styles.passwordInput, webOutlineReset]}
                         value={confirm}
-                        onChangeText={setConfirm}
+                        onChangeText={v => { setConfirm(v); if (pwError) setPwError(''); }}
                         placeholder="Confirm Password"
                         placeholderTextColor={colors.textSecondary}
                         secureTextEntry={!showConfirm}
@@ -90,6 +92,13 @@ export default function ResetPasswordScreen({ route, navigation }) {
                         <Ionicons name={showConfirm ? 'eye-off-outline' : 'eye-outline'} size={20} color={colors.textSecondary} />
                     </TouchableOpacity>
                 </View>
+
+                {pwError ? (
+                    <View style={styles.errorRow}>
+                        <Ionicons name="alert-circle" size={13} color={colors.error} />
+                        <Text style={styles.errorText}>{pwError}</Text>
+                    </View>
+                ) : null}
 
                 <TouchableOpacity
                     style={[styles.btnLarge, !canSubmit && styles.btnDisabled]}
@@ -150,5 +159,8 @@ function makeStyles(colors) {
         },
         btnDisabled: { backgroundColor: colors.textTertiary, shadowOpacity: 0, elevation: 0 },
         btnText:     { fontSize: 14, fontFamily: F.semibold, color: '#FFFFFF' },
+        inputError:  { borderColor: colors.error },
+        errorRow:    { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: colors.errorLight, borderRadius: 8, borderWidth: 1, borderColor: colors.error },
+        errorText:   { fontSize: 12, fontFamily: F.medium, color: colors.error, flex: 1 },
     });
 }

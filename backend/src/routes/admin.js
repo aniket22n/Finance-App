@@ -100,7 +100,18 @@ router.get('/users', auth, adminOnly, async (req, res) => {
             ];
         }
 
-        const users = await User.find(filter)
+        // Exclude "zombie" tempUsers — User docs created by send-otp that never finished
+        // signup. They have no firstName/lastName/name and would just clutter the list.
+        // Real members always have at least firstName set, admins always have a name.
+        const zombieFilter = {
+            $or: [
+                { firstName: { $exists: true, $ne: '' } },
+                { lastName:  { $exists: true, $ne: '' } },
+                { name:      { $exists: true, $ne: '' } },
+            ],
+        };
+
+        const users = await User.find({ $and: [filter, zombieFilter] })
             .select('-otp -otpExpiresAt')
             .sort({ createdAt: -1 })
             .skip((page - 1) * limit)
@@ -120,7 +131,7 @@ router.get('/users', auth, adminOnly, async (req, res) => {
         }
         const enriched = users.map(u => ({ ...u, groups: byUser.get(String(u._id)) || [] }));
 
-        const total = await User.countDocuments(filter);
+        const total = await User.countDocuments({ $and: [filter, zombieFilter] });
         res.json({ users: enriched, total, page: parseInt(page), pages: Math.ceil(total / limit) });
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -358,9 +369,18 @@ router.post('/account-requests/:requestId/approve', auth, adminOnly, async (req,
             return res.status(400).json({ error: 'Request is no longer pending' });
         }
 
-        // Check phone not already in User table
+        // Check phone not already in User table. If a "zombie" tempUser exists (created
+        // by send-otp but never completed signup — empty firstName/lastName/name and no
+        // PIN), clear it out so the approval can proceed. Real registered users (with
+        // a name) still get rejected.
         const exists = await User.findOne({ phone: request.phone });
-        if (exists) return res.status(400).json({ error: 'Phone already registered as a user' });
+        if (exists) {
+            const isZombie = !exists.firstName && !exists.lastName && !exists.name && !exists.pin;
+            if (!isZombie) {
+                return res.status(400).json({ error: 'Phone already registered as a user' });
+            }
+            await User.deleteOne({ _id: exists._id });
+        }
 
         // Create approved User from request — pre-save hook will sync `name` from first+last.
         const user = await User.create({
@@ -398,6 +418,13 @@ router.post('/account-requests/:requestId/reject', auth, adminOnly, async (req, 
         request.reviewedBy = req.user._id;
         if (reason) request.rejectReason = reason.trim();
         await request.save();
+
+        // Clean up any zombie tempUser (created by repeated send-otp calls). Don't touch
+        // an actual registered user.
+        const existingUser = await User.findOne({ phone: request.phone });
+        if (existingUser && !existingUser.firstName && !existingUser.lastName && !existingUser.name && !existingUser.pin) {
+            await User.deleteOne({ _id: existingUser._id });
+        }
 
         res.json({ success: true, message: 'Account request rejected' });
     } catch (error) {

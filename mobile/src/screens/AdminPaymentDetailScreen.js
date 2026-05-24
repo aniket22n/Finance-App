@@ -8,6 +8,7 @@ import { verifyPayment } from '../services/api';
 import { useTheme } from '../context/ThemeContext';
 import { F } from '../theme';
 import { apiErrMsg } from '../utils/error';
+import Toast, { useToast } from '../components/Toast';
 
 const BADGE = {
     paid:     { bg: '#F59E0B', label: 'Pending' },
@@ -44,6 +45,7 @@ export default function AdminPaymentDetailScreen({ route, navigation }) {
     const { colors } = useTheme();
     const [payment, setPayment] = useState(initial);
     const [busy, setBusy] = useState(null); // 'verify' | 'reject'
+    const { toast, show } = useToast();
 
     const badge = BADGE[payment.status] || { bg: colors.border, label: payment.status };
     const canAction = payment.status === 'paid';
@@ -54,7 +56,7 @@ export default function AdminPaymentDetailScreen({ route, navigation }) {
             await verifyPayment(payment._id, 'verified');
             setPayment(p => ({ ...p, status: 'verified' }));
         } catch (err) {
-            Alert.alert('Error', apiErrMsg(err, 'Failed to verify'));
+            show(apiErrMsg(err, 'Failed to verify'), 'error');
         } finally {
             setBusy(null);
         }
@@ -73,7 +75,7 @@ export default function AdminPaymentDetailScreen({ route, navigation }) {
                             await verifyPayment(payment._id, 'failed');
                             setPayment(p => ({ ...p, status: 'failed' }));
                         } catch (err) {
-                            Alert.alert('Error', apiErrMsg(err, 'Failed to reject'));
+                            show(apiErrMsg(err, 'Failed to reject'), 'error');
                         } finally {
                             setBusy(null);
                         }
@@ -162,6 +164,7 @@ export default function AdminPaymentDetailScreen({ route, navigation }) {
                     </View>
                 )}
             </ScrollView>
+            <Toast {...toast} />
         </View>
     );
 }

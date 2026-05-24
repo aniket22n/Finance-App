@@ -82,7 +82,7 @@ export default function AdminPOTWinnerConfigScreen({ route, navigation }) {
                 ];
                 const msg = candidates.find(v => typeof v === 'string' && v.length > 0)
                     || 'Failed to load group';
-                Alert.alert('Error', msg);
+                show(msg, 'error');
             } finally {
                 if (!cancelled) setLoading(false);
             }

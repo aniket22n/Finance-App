@@ -442,9 +442,13 @@ router.post('/signup-with-pin', signupWithPinValidations, validate, async (req, 
             return res.status(400).json({ error: 'Phone already registered' });
         }
 
-        // Block if an AccountRequest already exists for this phone
+        // Block if an AccountRequest already exists for this phone.
+        // IMPORTANT: clean up the freshly-created tempUser before returning, otherwise
+        // it becomes a "zombie" — empty-name User row that blocks future approval (the
+        // approve handler refuses to create when User.findOne({phone}) returns a hit).
         const existing = await AccountRequest.findOne({ phone });
         if (existing) {
+            await User.deleteOne({ _id: tempUser._id });
             if (existing.status === 'pending') {
                 return res.status(400).json({ error: 'Account request already pending. Please wait for admin approval.' });
             }
@@ -494,12 +498,19 @@ router.post('/update-pin', async (req, res) => {
         if (pinStr.length !== 4 || isNaN(pinStr)) {
             return res.status(400).json({ error: 'PIN must be exactly 4 digits' });
         }
-        const user = await User.findOneAndUpdate(
-            { phone },
-            { pin: pinStr },
-            { new: true }
-        );
+        const user = await User.findOne({ phone });
         if (!user) return res.status(404).json({ error: 'User not found' });
+        // Refuse to set PIN on an unregistered shell (no firstName/lastName/name).
+        // These are tempUser records from send-otp — they shouldn't be promotable to
+        // login-capable accounts without going through the proper signup+approval flow.
+        if (!user.firstName && !user.lastName && !user.name) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+        if (user.role === 'admin') {
+            return res.status(403).json({ error: 'Admin accounts do not use PIN — log in with OTP' });
+        }
+        user.pin = pinStr;
+        await user.save();
         res.json({ success: true, message: 'PIN updated successfully' });
     } catch (error) {
         res.status(500).json({ error: error.message });

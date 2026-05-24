@@ -95,7 +95,7 @@ export default function GroupDetailScreen({ route, navigation }) {
                             setOtpError('');
                             setShowOtpModal(true);
                         } catch (err) {
-                            Alert.alert('Error', 'Failed to send OTP. Try again.');
+                            show('Failed to send OTP. Try again.', 'error');
                         } finally {
                             setSendingOtp(false);
                         }
@@ -123,7 +123,7 @@ export default function GroupDetailScreen({ route, navigation }) {
             if (msg.toLowerCase().includes('otp') || msg.toLowerCase().includes('invalid') || err.response?.status === 400) {
                 setOtpError('Invalid OTP. Please try again.');
             } else {
-                Alert.alert('Error', msg || 'Failed to delete group');
+                show(msg || 'Failed to delete group', 'error');
                 setShowOtpModal(false);
             }
         } finally {

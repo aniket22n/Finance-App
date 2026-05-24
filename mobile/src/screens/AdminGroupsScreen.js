@@ -107,11 +107,11 @@ export default function AdminGroupsScreen({ navigation }) {
     const handleSubmit = async () => {
         const { name, emiAmount, reducedEmi, maxMembers } = form;
         if (!name.trim() || !emiAmount || !maxMembers) {
-            Alert.alert('Required', 'Fill in name, EMI amount, and number of members');
+            show('Fill in name, EMI amount, and number of members', 'warning');
             return;
         }
         if (!agreed && !editTarget) {
-            Alert.alert('Required', 'Please accept the terms & conditions');
+            show('Please accept the terms & conditions', 'warning');
             return;
         }
         const emi = parseFloat(emiAmount);
@@ -148,7 +148,7 @@ export default function AdminGroupsScreen({ navigation }) {
                 }
             }
         } catch (err) {
-            Alert.alert('Error', err.response?.data?.error || (editTarget ? 'Failed to send OTP. Try again.' : 'Failed to save group'));
+            show(err.response?.data?.error || (editTarget ? 'Failed to send OTP. Try again.' : 'Failed to save group'), 'error');
         } finally {
             setSubmitting(false);
         }
@@ -175,7 +175,7 @@ export default function AdminGroupsScreen({ navigation }) {
             if (msg.toLowerCase().includes('otp') || msg.toLowerCase().includes('invalid') || err.response?.status === 400) {
                 setOtpError('Invalid OTP. Please try again.');
             } else {
-                Alert.alert('Error', msg || 'Failed to update group');
+                show(msg || 'Failed to update group', 'error');
                 setShowOtpModal(false);
                 setPendingEdit(null);
             }
@@ -204,7 +204,7 @@ export default function AdminGroupsScreen({ navigation }) {
                             setGroups(prev => prev.filter(g => g._id !== group._id));
                             show('Group deleted', 'error');
                         } catch (err) {
-                            Alert.alert('Error', err.response?.data?.error || 'Failed to delete');
+                            show(err.response?.data?.error || 'Failed to delete', 'error');
                         }
                     },
                 },

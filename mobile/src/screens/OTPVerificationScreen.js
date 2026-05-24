@@ -10,6 +10,7 @@ import { verifyOtp, sendOtp, forgotPassword } from '../services/api';
 import { getPIN } from '../utils/pinStorage';
 import { apiErrMsg } from '../utils/error';
 import { F } from '../theme';
+import Toast, { useToast } from '../components/Toast';
 import { webOutlineReset } from '../hooks/useInputFocus';
 
 const OTP_LENGTH = 4;
@@ -20,9 +21,11 @@ export default function OTPVerificationScreen({ route, navigation }) {
     const { login } = useAuth();
     const { colors } = useTheme();
     const [digits, setDigits] = useState(Array(OTP_LENGTH).fill(''));
+    const [otpError, setOtpError] = useState('');
     const [loading, setLoading] = useState(false);
     const [resending, setResending] = useState(false);
     const [secondsLeft, setSecondsLeft] = useState(RESEND_SECONDS);
+    const { toast, show } = useToast();
     const refs = useRef([]);
 
     const otp = digits.join('');
@@ -42,6 +45,7 @@ export default function OTPVerificationScreen({ route, navigation }) {
         const next = [...digits];
         next[i] = value.slice(-1);
         setDigits(next);
+        if (otpError) setOtpError('');
         if (value && i < OTP_LENGTH - 1) refs.current[i + 1]?.focus();
     };
 
@@ -56,6 +60,7 @@ export default function OTPVerificationScreen({ route, navigation }) {
 
     const handleVerify = async () => {
         if (!canVerify) return;
+        setOtpError('');
         setLoading(true);
         try {
             if (purpose === 'reset') {
@@ -78,9 +83,8 @@ export default function OTPVerificationScreen({ route, navigation }) {
         } catch (err) {
             const status = err?.response?.status;
             const msg = apiErrMsg(err, 'Invalid OTP');
-            if (status === 403) {
-                Alert.alert('Access Denied', msg);
-            } else if (status === 404) {
+            if (status === 404) {
+                // "No Account Found" — needs a confirm action (sign up?), keep as native dialog.
                 Alert.alert(
                     'No Account Found',
                     'This phone number is not registered. Would you like to create an account?',
@@ -90,7 +94,10 @@ export default function OTPVerificationScreen({ route, navigation }) {
                     ]
                 );
             } else {
-                Alert.alert('Verification failed', msg);
+                // Wrong OTP / access denied / generic — inline themed error.
+                setOtpError(msg);
+                setDigits(Array(OTP_LENGTH).fill(''));
+                refs.current[0]?.focus();
             }
         } finally {
             setLoading(false);
@@ -110,7 +117,7 @@ export default function OTPVerificationScreen({ route, navigation }) {
             setDigits(Array(OTP_LENGTH).fill(''));
             refs.current[0]?.focus();
         } catch (err) {
-            Alert.alert('Error', apiErrMsg(err, 'Could not resend OTP'));
+            show(apiErrMsg(err, 'Could not resend OTP'), 'error');
         } finally {
             setResending(false);
         }
@@ -141,7 +148,12 @@ export default function OTPVerificationScreen({ route, navigation }) {
                         <TextInput
                             key={i}
                             ref={el => (refs.current[i] = el)}
-                            style={[styles.otpBox, webOutlineReset, digit ? styles.otpBoxFilled : null]}
+                            style={[
+                                styles.otpBox,
+                                webOutlineReset,
+                                digit ? styles.otpBoxFilled : null,
+                                otpError ? styles.otpBoxError : null,
+                            ]}
                             value={digit}
                             onChangeText={v => handleChange(i, v)}
                             onKeyPress={({ nativeEvent }) => handleKey(i, nativeEvent.key)}
@@ -152,6 +164,13 @@ export default function OTPVerificationScreen({ route, navigation }) {
                         />
                     ))}
                 </View>
+
+                {otpError ? (
+                    <View style={styles.otpErrorRow}>
+                        <Ionicons name="alert-circle" size={14} color={colors.error} />
+                        <Text style={styles.otpErrorText}>{otpError}</Text>
+                    </View>
+                ) : null}
 
                 <TouchableOpacity
                     style={[styles.btnLarge, !canVerify && styles.btnDisabled]}
@@ -173,6 +192,7 @@ export default function OTPVerificationScreen({ route, navigation }) {
                         : <Text style={[styles.resendText, secondsLeft > 0 && styles.resendDisabled]}>Resend OTP</Text>}
                 </TouchableOpacity>
             </View>
+            <Toast {...toast} />
         </KeyboardAvoidingView>
     );
 }
@@ -193,6 +213,15 @@ function makeStyles(colors) {
             color: colors.text, backgroundColor: colors.backgroundSecondary, textAlign: 'center',
         },
         otpBoxFilled:   { borderColor: colors.primary, borderWidth: 2 },
+        otpBoxError:    { borderColor: colors.error, borderWidth: 2 },
+        otpErrorRow: {
+            flexDirection: 'row', alignItems: 'center', gap: 6,
+            marginTop: -16, marginBottom: 18,
+            paddingHorizontal: 12, paddingVertical: 8,
+            backgroundColor: colors.errorLight, borderRadius: 8,
+            borderWidth: 1, borderColor: colors.error,
+        },
+        otpErrorText:   { flex: 1, fontSize: 12, fontFamily: F.medium, color: colors.error },
         btnLarge:       { height: 56, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primary, elevation: 4 },
         btnDisabled:    { backgroundColor: colors.textTertiary, elevation: 0 },
         btnText:        { fontSize: 14, fontFamily: F.semibold, color: '#FFFFFF' },

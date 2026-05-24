@@ -48,8 +48,8 @@ export default function ProfileScreen({ navigation }) {
     const initials = (user?.name || user?.phone || 'U').charAt(0).toUpperCase();
 
     const handleSave = async () => {
-        if (!firstName.trim()) return Alert.alert('Required', 'First name is required');
-        if (!lastName.trim())  return Alert.alert('Required', 'Last name is required');
+        if (!firstName.trim()) { show('First name is required', 'warning'); return; }
+        if (!lastName.trim())  { show('Last name is required',  'warning'); return; }
         setSaving(true);
         try {
             const res = await updateProfile({ firstName: firstName.trim(), lastName: lastName.trim(), email });
@@ -57,7 +57,7 @@ export default function ProfileScreen({ navigation }) {
             setShowEdit(false);
             show('Profile updated');
         } catch (err) {
-            Alert.alert('Error', err.response?.data?.error || 'Update failed');
+            show(err.response?.data?.error || 'Update failed', 'error');
         } finally {
             setSaving(false);
         }
@@ -77,7 +77,7 @@ export default function ProfileScreen({ navigation }) {
                 updateUser(res.data.user);
                 show('Avatar updated');
             } catch {
-                Alert.alert('Error', 'Failed to update avatar');
+                show('Failed to update avatar', 'error');
             }
         }
     };

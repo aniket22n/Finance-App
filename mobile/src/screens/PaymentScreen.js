@@ -11,6 +11,7 @@ import { useTheme } from '../context/ThemeContext';
 import { getUserPayments, getGroups, initiatePayment, getPaymentConfig } from '../services/api';
 import PaymentCard from '../components/PaymentCard';
 import { F } from '../theme';
+import Toast, { useToast } from '../components/Toast';
 import { useInputFocus, focusBorder, webOutlineReset } from '../hooks/useInputFocus';
 
 const buildMethods = (colors) => [
@@ -28,6 +29,7 @@ export default function PaymentScreen() {
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [upiVpa, setUpiVpa] = useState('admin@upi');
+    const { toast, show } = useToast();
 
     const [modalVisible, setModalVisible] = useState(false);
     const [selectedPending, setSelectedPending] = useState(null);
@@ -86,9 +88,10 @@ export default function PaymentScreen() {
             setPaymentMethod('');
             setUtrNumber('');
             setReceiptBase64(null);
-            Alert.alert('Payment Submitted', 'Your payment is pending verification.', [{ text: 'OK', onPress: loadData }]);
+            show('Payment submitted — pending verification');
+            setTimeout(() => loadData(), 600);
         } catch (err) {
-            Alert.alert('Payment Failed', err.response?.data?.error || 'Something went wrong. Try again.');
+            show(err.response?.data?.error || 'Payment failed. Try again.', 'error');
         } finally {
             setSubmitting(false);
         }
@@ -110,7 +113,7 @@ export default function PaymentScreen() {
                             await Linking.openURL(upiUrl);
                             await submitPayment('upi');
                         } else {
-                            Alert.alert('No UPI App', 'Install Google Pay, PhonePe, or Paytm.');
+                            show('No UPI app found. Install Google Pay, PhonePe, or Paytm.', 'error');
                         }
                     },
                 },
@@ -322,6 +325,7 @@ export default function PaymentScreen() {
                     </View>
                 </View>
             </Modal>
+            <Toast {...toast} />
         </View>
     );
 }

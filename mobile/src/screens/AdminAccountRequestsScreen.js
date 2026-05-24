@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { getAccountRequests, approveAccountRequest, rejectAccountRequest } from '../services/api';
 import { useTheme } from '../context/ThemeContext';
 import { F } from '../theme';
+import Toast, { useToast } from '../components/Toast';
 
 const FILTERS = [
     { id: 'all',      label: 'All' },
@@ -36,6 +37,7 @@ function timeAgo(dateStr) {
 
 export default function AdminAccountRequestsScreen({ navigation }) {
     const { colors } = useTheme();
+    const { toast, show } = useToast();
     const [filter, setFilter]     = useState('all');
     const [requests, setRequests] = useState([]);
     const [loading, setLoading]   = useState(true);
@@ -89,7 +91,7 @@ export default function AdminAccountRequestsScreen({ navigation }) {
                                 r._id === req._id ? { ...r, status: 'approved', reviewedAt: new Date().toISOString() } : r
                             ));
                         } catch (err) {
-                            Alert.alert('Error', err?.response?.data?.error || 'Failed to approve');
+                            show(err?.response?.data?.error || 'Failed to approve', 'error');
                         } finally {
                             setActionBusy(null);
                         }
@@ -117,7 +119,7 @@ export default function AdminAccountRequestsScreen({ navigation }) {
                     : r
             ));
         } catch (err) {
-            Alert.alert('Error', err?.response?.data?.error || 'Failed to reject');
+            show(err?.response?.data?.error || 'Failed to reject', 'error');
         } finally {
             setActionBusy(null);
             setRejectTarget(null);
@@ -274,6 +276,7 @@ export default function AdminAccountRequestsScreen({ navigation }) {
                     </View>
                 </View>
             </Modal>
+            <Toast {...toast} />
         </View>
     );
 }

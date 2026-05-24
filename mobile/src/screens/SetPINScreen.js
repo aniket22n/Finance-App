@@ -20,6 +20,7 @@ export default function SetPINScreen({ route, navigation }) {
     const { colors } = useTheme();
     const [pinDigits, setPinDigits] = useState(Array(PIN_LENGTH).fill(''));
     const [confirmDigits, setConfirmDigits] = useState(Array(PIN_LENGTH).fill(''));
+    const [pinError, setPinError] = useState('');
     const [loading, setLoading] = useState(false);
     const pinRefs = useRef([]);
     const confirmRefs = useRef([]);
@@ -41,6 +42,7 @@ export default function SetPINScreen({ route, navigation }) {
         const next = [...digits];
         next[i] = value.slice(-1);
         setDigits(next);
+        if (pinError) setPinError('');
         if (value && i < PIN_LENGTH - 1) nextRefs.current[i + 1]?.focus();
     };
 
@@ -56,11 +58,12 @@ export default function SetPINScreen({ route, navigation }) {
     const handleSubmit = async () => {
         if (!canSubmit) return;
         if (pin !== confirmPin) {
-            Alert.alert('Mismatch', 'PINs do not match. Try again.');
+            setPinError('PINs do not match. Try again.');
             setConfirmDigits(Array(PIN_LENGTH).fill(''));
             confirmRefs.current[0]?.focus();
             return;
         }
+        setPinError('');
         setLoading(true);
         try {
             await savePIN(phone, pin);
@@ -80,7 +83,7 @@ export default function SetPINScreen({ route, navigation }) {
                 await login(token, user);
             }
         } catch (err) {
-            Alert.alert('Error', apiErrMsg(err));
+            setPinError(apiErrMsg(err, 'Could not set PIN'));
         } finally {
             setLoading(false);
         }
@@ -128,7 +131,12 @@ export default function SetPINScreen({ route, navigation }) {
                         <TextInput
                             key={i}
                             ref={el => (confirmRefs.current[i] = el)}
-                            style={[styles.pinBox, webOutlineReset, digit ? styles.pinBoxFilled : null]}
+                            style={[
+                                styles.pinBox,
+                                webOutlineReset,
+                                digit ? styles.pinBoxFilled : null,
+                                pinError ? styles.pinBoxError : null,
+                            ]}
                             value={digit}
                             onChangeText={v => handlePinChange(i, v, setConfirmDigits, confirmDigits, confirmRefs)}
                             onKeyPress={({ nativeEvent }) => handlePinKey(i, nativeEvent.key, setConfirmDigits, confirmDigits, confirmRefs)}
@@ -139,6 +147,13 @@ export default function SetPINScreen({ route, navigation }) {
                         />
                     ))}
                 </View>
+
+                {pinError ? (
+                    <View style={styles.pinErrorRow}>
+                        <Ionicons name="alert-circle" size={14} color={colors.error} />
+                        <Text style={styles.pinErrorText}>{pinError}</Text>
+                    </View>
+                ) : null}
 
                 <TouchableOpacity
                     style={[styles.btnLarge, !canSubmit && styles.btnDisabled]}
@@ -169,6 +184,15 @@ function makeStyles(colors) {
             color: colors.text, backgroundColor: colors.backgroundSecondary, textAlign: 'center',
         },
         pinBoxFilled: { borderColor: colors.primary, borderWidth: 2 },
+        pinBoxError:  { borderColor: colors.error, borderWidth: 2 },
+        pinErrorRow: {
+            flexDirection: 'row', alignItems: 'center', gap: 6,
+            marginTop: 4, marginBottom: 8,
+            paddingHorizontal: 12, paddingVertical: 8,
+            backgroundColor: colors.errorLight, borderRadius: 8,
+            borderWidth: 1, borderColor: colors.error,
+        },
+        pinErrorText: { flex: 1, fontSize: 12, fontFamily: F.medium, color: colors.error },
         btnLarge: {
             height: 56, borderRadius: 12, alignItems: 'center', justifyContent: 'center',
             backgroundColor: colors.primary, elevation: 4, marginTop: 24,

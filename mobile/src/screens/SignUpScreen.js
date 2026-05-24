@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import {
     View, Text, TextInput, TouchableOpacity, StyleSheet,
-    KeyboardAvoidingView, Platform, ActivityIndicator, Alert, ScrollView,
+    KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
@@ -25,9 +25,9 @@ export default function SignUpScreen({ route, navigation }) {
 
     const handleSendOtp = async () => {
         setPhoneError('');
-        if (!firstName.trim()) return Alert.alert('Required', 'Enter your first name');
-        if (!lastName.trim())  return Alert.alert('Required', 'Enter your last name');
-        if (phone.length !== 10) return Alert.alert('Invalid', 'Enter a valid 10-digit phone number');
+        if (!firstName.trim()) { setPhoneError('Enter your first name'); return; }
+        if (!lastName.trim())  { setPhoneError('Enter your last name');  return; }
+        if (phone.length !== 10) { setPhoneError('Enter a valid 10-digit phone number'); return; }
         setLoading(true);
         try {
             const checkRes = await checkPhone(phone);
@@ -50,7 +50,7 @@ export default function SignUpScreen({ route, navigation }) {
                 lastName:  lastName.trim(),
             });
         } catch (err) {
-            Alert.alert('Error', apiErrMsg(err, 'Failed to send OTP'));
+            setPhoneError(apiErrMsg(err, 'Failed to send OTP'));
         } finally {
             setLoading(false);
         }

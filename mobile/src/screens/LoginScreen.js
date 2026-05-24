@@ -23,6 +23,7 @@ export default function LoginScreen({ navigation }) {
     const [isAdmin, setIsAdmin] = useState(false);
     const [checkingType, setCheckingType] = useState(false);
     const [pinDigits, setPinDigits] = useState(Array(PIN_LENGTH).fill(''));
+    const [pinError, setPinError] = useState('');
     const [loading, setLoading] = useState(false);
     const [phoneFocused, phoneFocusProps] = useInputFocus();
     const pinRefs = useRef([]);
@@ -34,6 +35,7 @@ export default function LoginScreen({ navigation }) {
 
     const handlePhoneBlur = async (e) => {
         phoneFocusProps.onBlur(e);
+        if (pinError) setPinError('');
         if (phone.length !== 10) return;
         setCheckingType(true);
         try {
@@ -53,6 +55,7 @@ export default function LoginScreen({ navigation }) {
         const next = [...pinDigits];
         next[i] = value.slice(-1);
         setPinDigits(next);
+        if (pinError) setPinError('');
         if (value && i < PIN_LENGTH - 1) pinRefs.current[i + 1]?.focus();
     };
 
@@ -65,16 +68,17 @@ export default function LoginScreen({ navigation }) {
         }
     };
 
-    // Returns true if phone passes registration check, false if an alert was shown
+    // Returns true if phone passes registration check, false if an inline error was set
+    // (or a native confirm dialog was shown for the multi-action "Sign Up?" case).
     const checkRegistration = async () => {
         try {
             const res = await checkPhone(phone);
             if (res.data.pendingRequest) {
-                Alert.alert('Account Pending', 'Your account is awaiting admin approval.');
+                setPinError('Your account is awaiting admin approval.');
                 return false;
             }
             if (res.data.rejectedRequest) {
-                Alert.alert('Account Rejected', 'Your account request was rejected. Please contact admin.');
+                setPinError('Your account request was rejected. Please contact admin.');
                 return false;
             }
             if (!res.data.exists) {
@@ -96,13 +100,14 @@ export default function LoginScreen({ navigation }) {
 
     const handlePinLogin = async () => {
         if (!canSubmitPin) return;
+        setPinError('');
         setLoading(true);
         try {
             const registered = await checkRegistration();
             if (!registered) return;
             const valid = await verifyPIN(phone, pin);
             if (!valid) {
-                Alert.alert('Wrong PIN', 'Incorrect PIN. Try again or use OTP.');
+                setPinError('Incorrect PIN. Try again or use OTP.');
                 setPinDigits(Array(PIN_LENGTH).fill(''));
                 pinRefs.current[0]?.focus();
                 return;
@@ -111,10 +116,16 @@ export default function LoginScreen({ navigation }) {
             await login(res.data.token, res.data.user);
         } catch (err) {
             const status = err?.response?.status;
-            if (status === 403) {
-                Alert.alert('Access Denied', apiErrMsg(err, 'Account not accessible'));
+            const msg = apiErrMsg(err, 'Could not login');
+            if (status === 401 || /[Ii]ncorrect|[Ww]rong/.test(msg)) {
+                // Server-side PIN check failed (mismatch with locally-stored hash etc.)
+                setPinError(msg);
+                setPinDigits(Array(PIN_LENGTH).fill(''));
+                pinRefs.current[0]?.focus();
+            } else if (status === 403) {
+                setPinError(msg);
             } else {
-                Alert.alert('Login failed', apiErrMsg(err, 'Could not login'));
+                setPinError(msg);
             }
         } finally {
             setLoading(false);
@@ -123,6 +134,7 @@ export default function LoginScreen({ navigation }) {
 
     const handleGetOtp = async () => {
         if (!canSubmitOtp) return;
+        setPinError('');
         setLoading(true);
         try {
             const registered = await checkRegistration();
@@ -130,7 +142,7 @@ export default function LoginScreen({ navigation }) {
             await sendOtp(phone);
             navigation.navigate('OTPVerification', { phone, purpose: 'login' });
         } catch (err) {
-            Alert.alert('Error', apiErrMsg(err, 'Could not send OTP'));
+            setPinError(apiErrMsg(err, 'Could not send OTP'));
         } finally {
             setLoading(false);
         }
@@ -221,7 +233,12 @@ export default function LoginScreen({ navigation }) {
                                     <TextInput
                                         key={i}
                                         ref={el => (pinRefs.current[i] = el)}
-                                        style={[styles.pinBox, webOutlineReset, digit ? styles.pinBoxFilled : null]}
+                                        style={[
+                                            styles.pinBox,
+                                            webOutlineReset,
+                                            digit ? styles.pinBoxFilled : null,
+                                            pinError ? styles.pinBoxError : null,
+                                        ]}
                                         value={digit}
                                         onChangeText={v => handlePinChange(i, v)}
                                         onKeyPress={({ nativeEvent }) => handlePinKey(i, nativeEvent.key)}
@@ -232,6 +249,13 @@ export default function LoginScreen({ navigation }) {
                                     />
                                 ))}
                             </View>
+
+                            {pinError ? (
+                                <View style={styles.pinErrorRow}>
+                                    <Ionicons name="alert-circle" size={14} color={colors.error} />
+                                    <Text style={styles.pinErrorText}>{pinError}</Text>
+                                </View>
+                            ) : null}
 
                             <TouchableOpacity
                                 style={styles.forgotWrap}
@@ -255,16 +279,24 @@ export default function LoginScreen({ navigation }) {
                     )}
 
                     {mode === 'otp' && (
-                        <TouchableOpacity
-                            style={[styles.btnLarge, !canSubmitOtp && styles.btnDisabled]}
-                            onPress={handleGetOtp}
-                            disabled={loading || !canSubmitOtp}
-                            activeOpacity={0.85}
-                        >
-                            {loading
-                                ? <ActivityIndicator color="#fff" />
-                                : <Text style={styles.btnText}>Get OTP</Text>}
-                        </TouchableOpacity>
+                        <>
+                            {pinError ? (
+                                <View style={styles.pinErrorRow}>
+                                    <Ionicons name="alert-circle" size={14} color={colors.error} />
+                                    <Text style={styles.pinErrorText}>{pinError}</Text>
+                                </View>
+                            ) : null}
+                            <TouchableOpacity
+                                style={[styles.btnLarge, !canSubmitOtp && styles.btnDisabled]}
+                                onPress={handleGetOtp}
+                                disabled={loading || !canSubmitOtp}
+                                activeOpacity={0.85}
+                            >
+                                {loading
+                                    ? <ActivityIndicator color="#fff" />
+                                    : <Text style={styles.btnText}>Get OTP</Text>}
+                            </TouchableOpacity>
+                        </>
                     )}
                 </View>
 
@@ -331,6 +363,15 @@ function makeStyles(colors) {
             color: colors.text, backgroundColor: colors.backgroundSecondary, textAlign: 'center',
         },
         pinBoxFilled: { borderColor: colors.primary, borderWidth: 2 },
+        pinBoxError:  { borderColor: colors.error, borderWidth: 2 },
+        pinErrorRow:  {
+            flexDirection: 'row', alignItems: 'center', gap: 6,
+            marginHorizontal: 16, marginTop: -12, marginBottom: 12,
+            paddingHorizontal: 12, paddingVertical: 8,
+            backgroundColor: colors.errorLight, borderRadius: 8,
+            borderWidth: 1, borderColor: colors.error,
+        },
+        pinErrorText: { flex: 1, fontSize: 12, fontFamily: F.medium, color: colors.error },
         forgotWrap:   { alignSelf: 'flex-end', marginHorizontal: 16, marginBottom: 8 },
         forgotText:   { fontSize: 12, fontFamily: F.semibold, color: colors.primary },
         btnLarge: {

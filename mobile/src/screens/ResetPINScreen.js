@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useRef } from 'react';
 import {
     View, Text, TextInput, TouchableOpacity, StyleSheet,
-    KeyboardAvoidingView, Platform, ActivityIndicator, Alert, ScrollView,
+    KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
@@ -10,6 +10,7 @@ import { apiErrMsg } from '../utils/error';
 import { savePIN } from '../utils/pinStorage';
 import { F } from '../theme';
 import { webOutlineReset } from '../hooks/useInputFocus';
+import Toast, { useToast } from '../components/Toast';
 
 const PIN_LENGTH = 4;
 
@@ -18,7 +19,9 @@ export default function ResetPINScreen({ route, navigation }) {
     const { colors } = useTheme();
     const [pinDigits, setPinDigits] = useState(Array(PIN_LENGTH).fill(''));
     const [confirmDigits, setConfirmDigits] = useState(Array(PIN_LENGTH).fill(''));
+    const [pinError, setPinError] = useState('');
     const [loading, setLoading] = useState(false);
+    const { toast, show } = useToast();
     const pinRefs = useRef([]);
     const confirmRefs = useRef([]);
 
@@ -31,6 +34,7 @@ export default function ResetPINScreen({ route, navigation }) {
         const next = [...digits];
         next[i] = value.slice(-1);
         setDigits(next);
+        if (pinError) setPinError('');
         if (value && i < PIN_LENGTH - 1) nextRefs.current[i + 1]?.focus();
     };
 
@@ -46,20 +50,20 @@ export default function ResetPINScreen({ route, navigation }) {
     const handleSubmit = async () => {
         if (!canSubmit) return;
         if (pin !== confirmPin) {
-            Alert.alert('Mismatch', 'PINs do not match. Try again.');
+            setPinError('PINs do not match. Try again.');
             setConfirmDigits(Array(PIN_LENGTH).fill(''));
             confirmRefs.current[0]?.focus();
             return;
         }
+        setPinError('');
         setLoading(true);
         try {
             await resetPinApi(phone, pin);
             await savePIN(phone, pin);
-            Alert.alert('Success', 'PIN updated successfully', [
-                { text: 'OK', onPress: () => navigation.reset({ index: 0, routes: [{ name: 'Login' }] }) },
-            ]);
+            show('PIN updated successfully');
+            setTimeout(() => navigation.reset({ index: 0, routes: [{ name: 'Login' }] }), 900);
         } catch (err) {
-            Alert.alert('Error', apiErrMsg(err, 'Could not update PIN'));
+            setPinError(apiErrMsg(err, 'Could not update PIN'));
         } finally {
             setLoading(false);
         }
@@ -106,7 +110,12 @@ export default function ResetPINScreen({ route, navigation }) {
                         <TextInput
                             key={i}
                             ref={el => (confirmRefs.current[i] = el)}
-                            style={[styles.pinBox, webOutlineReset, digit ? styles.pinBoxFilled : null]}
+                            style={[
+                                styles.pinBox,
+                                webOutlineReset,
+                                digit ? styles.pinBoxFilled : null,
+                                pinError ? styles.pinBoxError : null,
+                            ]}
                             value={digit}
                             onChangeText={v => handleChange(i, v, setConfirmDigits, confirmDigits, confirmRefs)}
                             onKeyPress={({ nativeEvent }) => handleKey(i, nativeEvent.key, setConfirmDigits, confirmDigits, confirmRefs)}
@@ -118,6 +127,13 @@ export default function ResetPINScreen({ route, navigation }) {
                     ))}
                 </View>
 
+                {pinError ? (
+                    <View style={styles.pinErrorRow}>
+                        <Ionicons name="alert-circle" size={14} color={colors.error} />
+                        <Text style={styles.pinErrorText}>{pinError}</Text>
+                    </View>
+                ) : null}
+
                 <TouchableOpacity
                     style={[styles.btnLarge, !canSubmit && styles.btnDisabled]}
                     onPress={handleSubmit}
@@ -127,6 +143,7 @@ export default function ResetPINScreen({ route, navigation }) {
                     {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Update PIN</Text>}
                 </TouchableOpacity>
             </ScrollView>
+            <Toast {...toast} />
         </KeyboardAvoidingView>
     );
 }
@@ -147,6 +164,15 @@ function makeStyles(colors) {
             color: colors.text, backgroundColor: colors.backgroundSecondary, textAlign: 'center',
         },
         pinBoxFilled: { borderColor: colors.primary, borderWidth: 2 },
+        pinBoxError:  { borderColor: colors.error, borderWidth: 2 },
+        pinErrorRow: {
+            flexDirection: 'row', alignItems: 'center', gap: 6,
+            marginTop: 4, marginBottom: 8,
+            paddingHorizontal: 12, paddingVertical: 8,
+            backgroundColor: colors.errorLight, borderRadius: 8,
+            borderWidth: 1, borderColor: colors.error,
+        },
+        pinErrorText: { flex: 1, fontSize: 12, fontFamily: F.medium, color: colors.error },
         btnLarge: {
             height: 56, borderRadius: 12, alignItems: 'center', justifyContent: 'center',
             backgroundColor: colors.primary, elevation: 4, marginTop: 24,

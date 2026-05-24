@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import {
     View, Text, TextInput, TouchableOpacity, StyleSheet,
-    KeyboardAvoidingView, Platform, ActivityIndicator, Alert,
+    KeyboardAvoidingView, Platform, ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
@@ -13,14 +13,16 @@ import { useInputFocus, focusBorder, webOutlineReset } from '../hooks/useInputFo
 export default function ForgotPINScreen({ navigation }) {
     const { colors } = useTheme();
     const [phone, setPhone] = useState('');
+    const [phoneError, setPhoneError] = useState('');
     const [loading, setLoading] = useState(false);
     const [phoneFocused, phoneFocusProps] = useInputFocus();
 
     const phoneValid = phone.length === 10;
 
     const handleSend = async () => {
+        setPhoneError('');
         if (!phoneValid) {
-            Alert.alert('Invalid', 'Enter a valid 10-digit phone number');
+            setPhoneError('Enter a valid 10-digit phone number');
             return;
         }
         setLoading(true);
@@ -28,7 +30,7 @@ export default function ForgotPINScreen({ navigation }) {
             await sendOtp(phone);
             navigation.navigate('ResetPINOTP', { phone });
         } catch (err) {
-            Alert.alert('Error', apiErrMsg(err, 'Could not send OTP'));
+            setPhoneError(apiErrMsg(err, 'Could not send OTP'));
         } finally {
             setLoading(false);
         }
@@ -51,13 +53,13 @@ export default function ForgotPINScreen({ navigation }) {
                 <Text style={styles.title}>Forgot PIN?</Text>
                 <Text style={styles.subtitle}>We'll help you reset your PIN</Text>
 
-                <View style={[styles.phoneRow, focusBorder(colors, phoneFocused)]}>
+                <View style={[styles.phoneRow, focusBorder(colors, phoneFocused), phoneError && styles.inputError]}>
                     <Text style={styles.prefixText}>+91</Text>
                     <View style={styles.prefixDivider} />
                     <TextInput
                         style={[styles.phoneInput, webOutlineReset]}
                         value={phone}
-                        onChangeText={t => setPhone(t.replace(/\D/g, '').slice(0, 10))}
+                        onChangeText={t => { setPhone(t.replace(/\D/g, '').slice(0, 10)); if (phoneError) setPhoneError(''); }}
                         placeholder="9876543210"
                         placeholderTextColor={colors.textSecondary}
                         keyboardType="phone-pad"
@@ -67,6 +69,13 @@ export default function ForgotPINScreen({ navigation }) {
                         {...phoneFocusProps}
                     />
                 </View>
+
+                {phoneError ? (
+                    <View style={styles.errorRow}>
+                        <Ionicons name="alert-circle" size={13} color={colors.error} />
+                        <Text style={styles.errorText}>{phoneError}</Text>
+                    </View>
+                ) : null}
 
                 <TouchableOpacity
                     style={[styles.btnLarge, !phoneValid && styles.btnDisabled]}
@@ -96,6 +105,9 @@ function makeStyles(colors) {
         prefixText:    { fontSize: 15, fontFamily: F.semibold, color: colors.primary, paddingHorizontal: 16 },
         prefixDivider: { width: 1, height: 24, backgroundColor: colors.border },
         phoneInput:    { flex: 1, height: 56, paddingHorizontal: 16, fontSize: 15, fontFamily: F.regular, color: colors.text },
+        inputError:    { borderColor: colors.error },
+        errorRow:      { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: colors.errorLight, borderRadius: 8, borderWidth: 1, borderColor: colors.error },
+        errorText:     { fontSize: 12, fontFamily: F.medium, color: colors.error, flex: 1 },
         btnLarge: {
             height: 56, borderRadius: 12, alignItems: 'center', justifyContent: 'center',
             backgroundColor: colors.primary, elevation: 4, marginTop: 24,
