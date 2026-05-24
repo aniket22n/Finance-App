@@ -14,13 +14,13 @@ const FILTERS = [
     { id: 'all',      label: 'All' },
     { id: 'pending',  label: 'Pending' },
     { id: 'approved', label: 'Approved' },
-    { id: 'rejected', label: 'Rejected' },
+    // 'rejected' tab dropped — rejected requests are deleted on reject so the user can
+    // re-apply later.
 ];
 
 const BADGE = {
     pending:  { bg: '#F59E0B', label: 'Pending' },
     approved: { bg: '#10B981', label: 'Approved' },
-    rejected: { bg: '#EF4444', label: 'Rejected' },
 };
 
 function timeAgo(dateStr) {
@@ -113,11 +113,10 @@ export default function AdminAccountRequestsScreen({ navigation }) {
         setRejectModal(false);
         try {
             await rejectAccountRequest(rejectTarget._id, rejectReason || undefined);
-            setRequests(prev => prev.map(r =>
-                r._id === rejectTarget._id
-                    ? { ...r, status: 'rejected', rejectReason: rejectReason || null, reviewedAt: new Date().toISOString() }
-                    : r
-            ));
+            // Backend deletes the record entirely (so the applicant can re-apply later).
+            // Remove the row from local state to match.
+            setRequests(prev => prev.filter(r => r._id !== rejectTarget._id));
+            show('Request rejected and removed');
         } catch (err) {
             show(err?.response?.data?.error || 'Failed to reject', 'error');
         } finally {

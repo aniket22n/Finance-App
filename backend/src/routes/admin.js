@@ -413,20 +413,24 @@ router.post('/account-requests/:requestId/reject', auth, adminOnly, async (req, 
             return res.status(400).json({ error: 'Request is no longer pending' });
         }
 
-        request.status = 'rejected';
-        request.reviewedAt = new Date();
-        request.reviewedBy = req.user._id;
-        if (reason) request.rejectReason = reason.trim();
-        await request.save();
+        // Delete the rejected request entirely (rather than soft-marking it) so the
+        // applicant can try signing up again later. Soft-rejection used to permanently
+        // block re-applications via the signup-with-pin "rejected" check.
+        const phone = request.phone;
+        await AccountRequest.deleteOne({ _id: request._id });
 
         // Clean up any zombie tempUser (created by repeated send-otp calls). Don't touch
         // an actual registered user.
-        const existingUser = await User.findOne({ phone: request.phone });
+        const existingUser = await User.findOne({ phone });
         if (existingUser && !existingUser.firstName && !existingUser.lastName && !existingUser.name && !existingUser.pin) {
             await User.deleteOne({ _id: existingUser._id });
         }
 
-        res.json({ success: true, message: 'Account request rejected' });
+        res.json({
+            success: true,
+            message: 'Account request rejected and removed',
+            reason: reason?.trim() || null,    // returned for the admin's logs/UI even though the record is gone
+        });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
