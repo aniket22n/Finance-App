@@ -150,7 +150,7 @@ export default function AdminPaymentsScreen({ navigation, route }) {
         }
     }, [statuses, groupId, month]);
 
-    useFocusEffect(useCallback(() => { setLoading(true); load(); }, [load]));
+    useFocusEffect(useCallback(() => { load(); }, [load]));
 
     const onRefresh = () => { setRefreshing(true); load(); };
 

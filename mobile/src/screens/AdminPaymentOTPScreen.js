@@ -74,15 +74,11 @@ export default function AdminPaymentOTPScreen({ route, navigation }) {
 
             const isAccepted = action === 'verify' || action === 'change-to-verified';
             const targetFilter = isAccepted ? 'verified' : 'rejected';
-            const successMsg = isAccepted ? 'Payment accepted' : 'Payment rejected';
 
-            show(successMsg);
-            setTimeout(() => {
-                navigation.navigate('Main', {
-                    screen: 'Payments',
-                    params: { activeFilter: targetFilter },
-                });
-            }, 800);
+            navigation.navigate('Main', {
+                screen: 'Payments',
+                params: { activeFilter: targetFilter },
+            });
         } catch (err) {
             const msg = apiErrMsg(err, 'Action failed. Check your OTP.');
             setOtpError(msg);

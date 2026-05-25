@@ -681,14 +681,13 @@ router.post('/payments/:id/verify', auth, adminOnly, async (req, res) => {
         if (payment.user?.expoPushToken) {
             sendPushNotification(payment.user.expoPushToken, title, body, { paymentId: String(payment._id) }).catch(() => {});
         }
-        await notifyUsers(payment.user._id, { type: 'payment_verified', title, body, data: { paymentId: String(payment._id) } });
+        notifyUsers(payment.user._id, { type: 'payment_verified', title, body, data: { paymentId: String(payment._id) } }).catch(() => {});
 
-        const populated = await Payment.findById(payment._id)
-            .populate('user', 'name phone')
-            .populate('group', 'name')
-            .populate('verifiedBy', 'name')
-            .lean();
-        res.json({ success: true, message: 'Payment verified successfully', payment: populated });
+        await payment.populate([
+            { path: 'group', select: 'name' },
+            { path: 'verifiedBy', select: 'name' },
+        ]);
+        res.json({ success: true, message: 'Payment verified successfully', payment: payment.toObject() });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -724,14 +723,13 @@ router.post('/payments/:id/reject', auth, adminOnly, async (req, res) => {
         if (payment.user?.expoPushToken) {
             sendPushNotification(payment.user.expoPushToken, title, body, { paymentId: String(payment._id) }).catch(() => {});
         }
-        await notifyUsers(payment.user._id, { type: 'payment_rejected', title, body, data: { paymentId: String(payment._id) } });
+        notifyUsers(payment.user._id, { type: 'payment_rejected', title, body, data: { paymentId: String(payment._id) } }).catch(() => {});
 
-        const populated = await Payment.findById(payment._id)
-            .populate('user', 'name phone')
-            .populate('group', 'name')
-            .populate('verifiedBy', 'name')
-            .lean();
-        res.json({ success: true, message: 'Payment rejected', payment: populated });
+        await payment.populate([
+            { path: 'group', select: 'name' },
+            { path: 'verifiedBy', select: 'name' },
+        ]);
+        res.json({ success: true, message: 'Payment rejected', payment: payment.toObject() });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -787,14 +785,13 @@ router.post('/payments/:id/change-status', auth, adminOnly, async (req, res) => 
         if (payment.user?.expoPushToken) {
             sendPushNotification(payment.user.expoPushToken, title, body, { paymentId: String(payment._id) }).catch(() => {});
         }
-        await notifyUsers(payment.user._id, { type: notifType, title, body, data: { paymentId: String(payment._id) } });
+        notifyUsers(payment.user._id, { type: notifType, title, body, data: { paymentId: String(payment._id) } }).catch(() => {});
 
-        const populated = await Payment.findById(payment._id)
-            .populate('user', 'name phone')
-            .populate('group', 'name')
-            .populate('verifiedBy', 'name')
-            .lean();
-        res.json({ success: true, message: `Payment status changed to ${newStatus}`, payment: populated });
+        await payment.populate([
+            { path: 'group', select: 'name' },
+            { path: 'verifiedBy', select: 'name' },
+        ]);
+        res.json({ success: true, message: `Payment status changed to ${newStatus}`, payment: payment.toObject() });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
