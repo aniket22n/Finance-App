@@ -4,7 +4,7 @@ import {
     KeyboardAvoidingView, Platform, ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { adminVerifyPayment, adminRejectPayment, adminChangePaymentStatus } from '../services/api';
+import { adminVerifyPayment, adminRejectPayment, adminChangePaymentStatus, requestPaymentActionOtp } from '../services/api';
 import { useTheme } from '../context/ThemeContext';
 import { F } from '../theme';
 import { apiErrMsg } from '../utils/error';
@@ -26,6 +26,7 @@ export default function AdminPaymentOTPScreen({ route, navigation }) {
     const [digits, setDigits] = useState(Array(OTP_LENGTH).fill(''));
     const [otpError, setOtpError] = useState('');
     const [loading, setLoading] = useState(false);
+    const [resending, setResending] = useState(false);
     const { toast, show } = useToast();
     const refs = useRef([]);
 
@@ -92,6 +93,21 @@ export default function AdminPaymentOTPScreen({ route, navigation }) {
         }
     };
 
+    const handleResend = async () => {
+        setResending(true);
+        setOtpError('');
+        setDigits(Array(OTP_LENGTH).fill(''));
+        try {
+            await requestPaymentActionOtp(paymentId);
+            show('OTP sent');
+            setTimeout(() => refs.current[0]?.focus(), 100);
+        } catch (err) {
+            show(apiErrMsg(err, 'Could not resend OTP'), 'error');
+        } finally {
+            setResending(false);
+        }
+    };
+
     const styles = useMemo(() => makeStyles(colors), [colors]);
 
     return (
@@ -146,6 +162,18 @@ export default function AdminPaymentOTPScreen({ route, navigation }) {
                         <Text style={styles.errorText}>{otpError}</Text>
                     </View>
                 ) : null}
+
+                <TouchableOpacity
+                    style={styles.resendBtn}
+                    onPress={handleResend}
+                    disabled={loading || resending}
+                    activeOpacity={0.7}
+                >
+                    {resending
+                        ? <ActivityIndicator size="small" color={colors.textSecondary} />
+                        : <Text style={styles.resendText}>Resend OTP</Text>
+                    }
+                </TouchableOpacity>
 
                 <TouchableOpacity
                     style={[
@@ -224,6 +252,16 @@ function makeStyles(colors) {
             borderColor: colors.error,
         },
         errorText: { flex: 1, fontSize: 12, fontFamily: F.medium, color: colors.error },
+
+        resendBtn: {
+            alignSelf: 'center',
+            paddingVertical: 10,
+            paddingHorizontal: 20,
+            marginBottom: 16,
+            minHeight: 36,
+            justifyContent: 'center',
+        },
+        resendText: { fontSize: 13, fontFamily: F.medium, color: colors.textSecondary, textDecorationLine: 'underline' },
 
         confirmBtn: {
             height: 56,

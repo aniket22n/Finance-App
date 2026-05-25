@@ -641,6 +641,7 @@ router.get('/payments', auth, adminOnly, async (req, res) => {
         const payments = await Payment.find(filter)
             .populate('user', 'name phone avatar')
             .populate('group', 'name totalMonths')
+            .populate('verifiedBy', 'name')
             .sort({ createdAt: -1 })
             .limit(parseInt(limit))
             .lean();
@@ -682,7 +683,12 @@ router.post('/payments/:id/verify', auth, adminOnly, async (req, res) => {
         }
         await notifyUsers(payment.user._id, { type: 'payment_verified', title, body, data: { paymentId: String(payment._id) } });
 
-        res.json({ success: true, message: 'Payment verified successfully', payment });
+        const populated = await Payment.findById(payment._id)
+            .populate('user', 'name phone')
+            .populate('group', 'name')
+            .populate('verifiedBy', 'name')
+            .lean();
+        res.json({ success: true, message: 'Payment verified successfully', payment: populated });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -720,7 +726,12 @@ router.post('/payments/:id/reject', auth, adminOnly, async (req, res) => {
         }
         await notifyUsers(payment.user._id, { type: 'payment_rejected', title, body, data: { paymentId: String(payment._id) } });
 
-        res.json({ success: true, message: 'Payment rejected', payment });
+        const populated = await Payment.findById(payment._id)
+            .populate('user', 'name phone')
+            .populate('group', 'name')
+            .populate('verifiedBy', 'name')
+            .lean();
+        res.json({ success: true, message: 'Payment rejected', payment: populated });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -778,7 +789,12 @@ router.post('/payments/:id/change-status', auth, adminOnly, async (req, res) => 
         }
         await notifyUsers(payment.user._id, { type: notifType, title, body, data: { paymentId: String(payment._id) } });
 
-        res.json({ success: true, message: `Payment status changed to ${newStatus}`, payment });
+        const populated = await Payment.findById(payment._id)
+            .populate('user', 'name phone')
+            .populate('group', 'name')
+            .populate('verifiedBy', 'name')
+            .lean();
+        res.json({ success: true, message: `Payment status changed to ${newStatus}`, payment: populated });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }

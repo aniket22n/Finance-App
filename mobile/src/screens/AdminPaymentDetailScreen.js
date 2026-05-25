@@ -11,8 +11,8 @@ import { apiErrMsg } from '../utils/error';
 import Toast, { useToast } from '../components/Toast';
 
 const BADGE = {
-    paid:     { bg: '#F59E0B', label: 'Pending' },
-    pending:  { bg: '#6B7280', label: 'Awaiting' },
+    paid:     { bg: '#F59E0B', label: 'Awaiting' },
+    pending:  { bg: '#6B7280', label: 'Pending' },
     verified: { bg: '#10B981', label: 'Verified' },
     failed:   { bg: '#EF4444', label: 'Rejected' },
     rejected: { bg: '#EF4444', label: 'Rejected' },
@@ -116,6 +116,12 @@ export default function AdminPaymentDetailScreen({ route, navigation }) {
                     <Row label="Month"   value={payment.month ? `Month ${payment.month}` : undefined} />
                     <View style={styles.divider} />
                     <Row label="Paid"    value={timeAgo(payment.paidAt || payment.createdAt)} />
+                    {payment.upiTransactionId ? (
+                        <>
+                            <View style={styles.divider} />
+                            <Row label="Transaction ID" value={payment.upiTransactionId} />
+                        </>
+                    ) : null}
                     {payment.upiRef ? (
                         <>
                             <View style={styles.divider} />

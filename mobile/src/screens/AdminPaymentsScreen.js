@@ -9,9 +9,8 @@ import { getAdminPaymentsList, getGroups } from '../services/api';
 import { useTheme } from '../context/ThemeContext';
 import { F } from '../theme';
 
-// Multi-select status pills — 'all' is exclusive; others combine freely
 const STATUS_OPTIONS = [
-    { id: 'all',      label: 'All' },
+    { id: 'all',      label: 'All'      },
     { id: 'awaiting', label: 'Awaiting' },
     { id: 'pending',  label: 'Pending'  },
     { id: 'verified', label: 'Verified' },
@@ -47,7 +46,7 @@ function PickerModal({ visible, title, items, selected, onSelect, onClose, color
                 <FlatList
                     data={items}
                     keyExtractor={i => String(i.id)}
-                    style={{ maxHeight: 360 }}
+                    style={{ maxHeight: 380 }}
                     renderItem={({ item }) => (
                         <TouchableOpacity
                             style={styles.sheetRow}
@@ -70,26 +69,66 @@ function PickerModal({ visible, title, items, selected, onSelect, onClose, color
     );
 }
 
+function StatusModal({ visible, statuses, onToggle, onClose, colors, styles }) {
+    return (
+        <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+            <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onClose} />
+            <View style={styles.sheet}>
+                <View style={styles.handle} />
+                <Text style={styles.sheetTitle}>Filter by Status</Text>
+                {STATUS_OPTIONS.map(opt => {
+                    const active = opt.id === 'all'
+                        ? statuses.includes('all')
+                        : statuses.includes(opt.id);
+                    return (
+                        <TouchableOpacity
+                            key={opt.id}
+                            style={styles.sheetRow}
+                            onPress={() => onToggle(opt.id)}
+                            activeOpacity={0.7}
+                        >
+                            <Text style={[
+                                styles.sheetRowText,
+                                active && { color: colors.primary, fontFamily: F.semibold },
+                            ]}>
+                                {opt.label}
+                            </Text>
+                            <View style={[
+                                styles.checkbox,
+                                active && { backgroundColor: colors.primary, borderColor: colors.primary },
+                            ]}>
+                                {active && <Ionicons name="checkmark" size={12} color="#fff" />}
+                            </View>
+                        </TouchableOpacity>
+                    );
+                })}
+                <TouchableOpacity style={styles.doneBtn} onPress={onClose} activeOpacity={0.85}>
+                    <Text style={styles.doneBtnText}>Done</Text>
+                </TouchableOpacity>
+            </View>
+        </Modal>
+    );
+}
+
 export default function AdminPaymentsScreen({ navigation, route }) {
     const { colors } = useTheme();
 
-    // Multi-select statuses — ['all'] means no filter
-    const [statuses, setStatuses] = useState(['all']);
-    const [groupId,  setGroupId]  = useState('all');
-    const [month,    setMonth]    = useState('all');
+    const [statuses,  setStatuses]  = useState(['all']);
+    const [groupId,   setGroupId]   = useState('all');
+    const [month,     setMonth]     = useState('all');
 
-    const [groups,    setGroups]    = useState([]);
-    const [payments,  setPayments]  = useState([]);
-    const [loading,   setLoading]   = useState(true);
+    const [groups,     setGroups]     = useState([]);
+    const [payments,   setPayments]   = useState([]);
+    const [loading,    setLoading]    = useState(true);
     const [refreshing, setRefreshing] = useState(false);
-    const [groupModal, setGroupModal] = useState(false);
-    const [monthModal, setMonthModal] = useState(false);
 
-    // Handle redirect from OTP screen
+    const [statusModal, setStatusModal] = useState(false);
+    const [groupModal,  setGroupModal]  = useState(false);
+    const [monthModal,  setMonthModal]  = useState(false);
+
     useEffect(() => {
         const incoming = route?.params?.activeFilter;
         if (!incoming || incoming === 'all') return;
-        // Map old single-value filter names to new semantic ids
         const map = { pending: 'awaiting', verified: 'verified', rejected: 'rejected' };
         const mapped = map[incoming] || incoming;
         if (STATUS_OPTIONS.some(o => o.id === mapped)) setStatuses([mapped]);
@@ -116,19 +155,14 @@ export default function AdminPaymentsScreen({ navigation, route }) {
     const onRefresh = () => { setRefreshing(true); load(); };
 
     const toggleStatus = (id) => {
-        setLoading(true);
-        if (id === 'all') {
-            setStatuses(['all']);
-            return;
-        }
         setStatuses(prev => {
+            if (id === 'all') return ['all'];
             const without = prev.filter(s => s !== 'all' && s !== id);
             const next = prev.includes(id) ? without : [...without, id];
             return next.length === 0 ? ['all'] : next;
         });
     };
 
-    // Group + month picker data
     const groupItems = [
         { id: 'all', label: 'All Groups' },
         ...groups.map(g => ({ id: g._id, label: g.name })),
@@ -140,11 +174,21 @@ export default function AdminPaymentsScreen({ navigation, route }) {
         ...Array.from({ length: maxMonth }, (_, i) => ({ id: i + 1, label: `Month ${i + 1}` })),
     ];
 
-    const groupLabel = groupItems.find(g => g.id === groupId)?.label || 'All Groups';
-    const monthLabel = monthItems.find(m => m.id === month)?.label   || 'All Months';
+    const isAllStatus   = statuses.includes('all');
     const hasGroupFilter = groupId !== 'all';
     const hasMonthFilter = month   !== 'all';
-    const isAllStatus    = statuses.includes('all');
+
+    const statusLabel = isAllStatus
+        ? 'Status'
+        : statuses.length === 1
+            ? STATUS_OPTIONS.find(o => o.id === statuses[0])?.label || 'Status'
+            : `${statuses.length} selected`;
+    const groupLabel = hasGroupFilter
+        ? (groupItems.find(g => g.id === groupId)?.label || 'Group')
+        : 'Group';
+    const monthLabel = hasMonthFilter
+        ? (monthItems.find(m => m.id === month)?.label || 'Month')
+        : 'Month';
 
     const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -154,84 +198,66 @@ export default function AdminPaymentsScreen({ navigation, route }) {
                 <Text style={styles.title}>Payments</Text>
             </View>
 
-            {/* ── Single filter line ── */}
-            <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.filterRow}
-                style={styles.filterScroll}
-            >
-                {/* Status pills (multi-select) */}
-                {STATUS_OPTIONS.map((opt, idx) => {
-                    const active = opt.id === 'all' ? isAllStatus : statuses.includes(opt.id);
-                    return (
-                        <TouchableOpacity
-                            key={opt.id}
-                            style={[styles.pill, active && styles.pillActive]}
-                            onPress={() => toggleStatus(opt.id)}
-                            activeOpacity={0.75}
-                        >
-                            <Text style={[styles.pillTxt, active && styles.pillTxtActive]}>
-                                {opt.label}
-                            </Text>
-                        </TouchableOpacity>
-                    );
-                })}
+            {/* ── Three filter chips in one row ── */}
+            <View style={styles.filterRow}>
+                <TouchableOpacity
+                    style={[styles.chip, !isAllStatus && styles.chipActive]}
+                    onPress={() => setStatusModal(true)}
+                    activeOpacity={0.75}
+                >
+                    <Ionicons
+                        name="funnel-outline" size={13}
+                        color={!isAllStatus ? colors.primary : colors.textSecondary}
+                    />
+                    <Text
+                        style={[styles.chipTxt, !isAllStatus && styles.chipTxtActive]}
+                        numberOfLines={1}
+                    >
+                        {statusLabel}
+                    </Text>
+                    <Ionicons name="chevron-down" size={11}
+                        color={!isAllStatus ? colors.primary : colors.textSecondary} />
+                </TouchableOpacity>
 
-                {/* Divider */}
-                <View style={styles.divider} />
-
-                {/* Group chip */}
                 <TouchableOpacity
                     style={[styles.chip, hasGroupFilter && styles.chipActive]}
                     onPress={() => setGroupModal(true)}
                     activeOpacity={0.75}
                 >
-                    <Ionicons name="people-outline" size={12}
+                    <Ionicons name="people-outline" size={13}
                         color={hasGroupFilter ? colors.primary : colors.textSecondary} />
                     <Text
                         style={[styles.chipTxt, hasGroupFilter && styles.chipTxtActive]}
                         numberOfLines={1}
                     >
-                        {hasGroupFilter ? groupLabel : 'Group'}
+                        {groupLabel}
                     </Text>
                     <Ionicons name="chevron-down" size={11}
                         color={hasGroupFilter ? colors.primary : colors.textSecondary} />
                 </TouchableOpacity>
 
-                {/* Month chip */}
                 <TouchableOpacity
                     style={[styles.chip, hasMonthFilter && styles.chipActive]}
                     onPress={() => setMonthModal(true)}
                     activeOpacity={0.75}
                 >
-                    <Ionicons name="calendar-outline" size={12}
+                    <Ionicons name="calendar-outline" size={13}
                         color={hasMonthFilter ? colors.primary : colors.textSecondary} />
-                    <Text style={[styles.chipTxt, hasMonthFilter && styles.chipTxtActive]}>
-                        {hasMonthFilter ? monthLabel : 'Month'}
+                    <Text
+                        style={[styles.chipTxt, hasMonthFilter && styles.chipTxtActive]}
+                        numberOfLines={1}
+                    >
+                        {monthLabel}
                     </Text>
                     <Ionicons name="chevron-down" size={11}
                         color={hasMonthFilter ? colors.primary : colors.textSecondary} />
                 </TouchableOpacity>
+            </View>
 
-                {/* Clear group+month button */}
-                {(hasGroupFilter || hasMonthFilter) && (
-                    <TouchableOpacity
-                        style={styles.clearBtn}
-                        onPress={() => { setGroupId('all'); setMonth('all'); }}
-                        activeOpacity={0.7}
-                    >
-                        <Ionicons name="close-circle" size={16} color={colors.textSecondary} />
-                    </TouchableOpacity>
-                )}
-            </ScrollView>
-
-            {/* Count */}
             <Text style={styles.countLabel}>
                 {payments.length} PAYMENT{payments.length !== 1 ? 'S' : ''}
             </Text>
 
-            {/* List */}
             <ScrollView
                 style={styles.list}
                 contentContainerStyle={styles.listContent}
@@ -242,7 +268,8 @@ export default function AdminPaymentsScreen({ navigation, route }) {
                     <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>
                 ) : payments.length === 0 ? (
                     <View style={styles.empty}>
-                        <Text style={styles.emptyTxt}>No payments match the filters</Text>
+                        <Ionicons name="receipt-outline" size={36} color={colors.textSecondary} />
+                        <Text style={styles.emptyTxt}>No payments match filters</Text>
                     </View>
                 ) : (
                     payments.map(p => {
@@ -271,7 +298,7 @@ export default function AdminPaymentsScreen({ navigation, route }) {
                                         <Text style={styles.meta} numberOfLines={1}>
                                             <Text style={styles.amount}>₹{p.amount?.toLocaleString()}</Text>
                                             {'  ·  '}{(p.paymentMethod || 'upi').toUpperCase()}
-                                            {'  ·  '}M{p.month}
+                                            {'  ·  '}Month {p.month}
                                             {'  ·  '}{timeAgo(p.paidAt || p.createdAt)}
                                         </Text>
                                         {p.group?.name
@@ -285,6 +312,13 @@ export default function AdminPaymentsScreen({ navigation, route }) {
                 )}
             </ScrollView>
 
+            <StatusModal
+                visible={statusModal}
+                statuses={statuses}
+                onToggle={toggleStatus}
+                onClose={() => { setStatusModal(false); setLoading(true); }}
+                colors={colors} styles={styles}
+            />
             <PickerModal
                 visible={groupModal}
                 title="Filter by Group"
@@ -316,98 +350,99 @@ function makeStyles(colors) {
         },
         title: { fontSize: 20, fontFamily: F.bold, color: colors.text },
 
-        // ── Filter line ──
-        filterScroll: { flexGrow: 0 },
+        // Three chips row
         filterRow: {
-            paddingHorizontal: 12, paddingVertical: 10,
-            gap: 6, alignItems: 'center',
+            flexDirection: 'row',
+            paddingHorizontal: 12,
+            paddingVertical: 10,
+            gap: 8,
         },
-
-        // Status pills
-        pill: {
-            height: 32, paddingHorizontal: 12, borderRadius: 16,
-            borderWidth: 1, borderColor: colors.border,
-            alignItems: 'center', justifyContent: 'center',
-        },
-        pillActive:   { backgroundColor: colors.primary, borderColor: colors.primary },
-        pillTxt:      { fontSize: 12, fontFamily: F.medium, color: colors.textSecondary },
-        pillTxtActive:{ fontSize: 12, fontFamily: F.semibold, color: '#fff' },
-
-        // Divider between pills and chips
-        divider: { width: 1, height: 22, backgroundColor: colors.border, marginHorizontal: 2 },
-
-        // Group / Month chips
         chip: {
-            height: 32, paddingHorizontal: 10, borderRadius: 8,
-            borderWidth: 1, borderColor: colors.border,
-            flexDirection: 'row', alignItems: 'center', gap: 4,
+            flex: 1,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 4,
+            height: 36,
+            borderRadius: 10,
+            borderWidth: 1,
+            borderColor: colors.border,
             backgroundColor: colors.backgroundSecondary,
+            paddingHorizontal: 8,
         },
         chipActive: {
             borderColor: colors.primary,
-            backgroundColor: (colors.primaryLight || colors.primary + '18'),
+            backgroundColor: colors.primary + '18',
         },
-        chipTxt:      { fontSize: 12, fontFamily: F.medium, color: colors.textSecondary, maxWidth: 90 },
-        chipTxtActive:{ color: colors.primary },
-        clearBtn: { paddingHorizontal: 2 },
+        chipTxt: {
+            flex: 1, fontSize: 12, fontFamily: F.medium,
+            color: colors.textSecondary, textAlign: 'center',
+        },
+        chipTxtActive: { color: colors.primary, fontFamily: F.semibold },
 
-        // Count
         countLabel: {
             fontSize: 11, fontFamily: F.semibold, color: colors.textTertiary,
             letterSpacing: 0.5, paddingHorizontal: 16, paddingBottom: 6,
         },
 
-        // List
         list:        { flex: 1 },
         listContent: { paddingHorizontal: 12, paddingBottom: 90 },
         center:      { paddingTop: 60, alignItems: 'center' },
         empty: {
-            height: 160, alignItems: 'center', justifyContent: 'center',
-            borderWidth: 1, borderStyle: 'dashed',
-            borderColor: colors.border, borderRadius: 12, marginTop: 8,
+            paddingTop: 60, alignItems: 'center', justifyContent: 'center', gap: 10,
         },
         emptyTxt: { fontSize: 13, fontFamily: F.regular, color: colors.textSecondary },
 
-        // Card
         card: {
             backgroundColor: colors.backgroundSecondary,
             borderWidth: 1, borderColor: colors.border,
-            borderRadius: 10, paddingVertical: 8, paddingHorizontal: 10, marginBottom: 6,
+            borderRadius: 10, paddingVertical: 10, paddingHorizontal: 12, marginBottom: 8,
         },
         cardRow:  { flexDirection: 'row', alignItems: 'center' },
         avatar: {
-            width: 34, height: 34, borderRadius: 17,
-            backgroundColor: colors.primaryLight,
+            width: 38, height: 38, borderRadius: 19,
+            backgroundColor: colors.primary + '18',
             alignItems: 'center', justifyContent: 'center',
             marginRight: 10, borderWidth: 1, borderColor: colors.border,
         },
-        avatarTxt: { fontSize: 13, fontFamily: F.bold, color: colors.primary },
+        avatarTxt: { fontSize: 14, fontFamily: F.bold, color: colors.primary },
         cardInfo:  { flex: 1, minWidth: 0 },
-        nameRow:   { flexDirection: 'row', alignItems: 'center', gap: 6 },
-        name:      { flex: 1, fontSize: 13, fontFamily: F.bold, color: colors.text },
-        badge:     { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5 },
-        badgeTxt:  { fontSize: 9, fontFamily: F.bold, color: '#fff', letterSpacing: 0.3 },
-        meta:      { fontSize: 11, fontFamily: F.regular, color: colors.textSecondary, marginTop: 2 },
-        amount:    { fontFamily: F.bold, color: colors.text },
-        groupName: { fontSize: 11, fontFamily: F.medium, color: colors.primary, marginTop: 1 },
+        nameRow:   { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 },
+        name:      { flex: 1, fontSize: 14, fontFamily: F.bold, color: colors.text },
+        badge:     { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 5 },
+        badgeTxt:  { fontSize: 10, fontFamily: F.bold, color: '#fff' },
+        meta:      { fontSize: 11, fontFamily: F.regular, color: colors.textSecondary },
+        amount:    { fontFamily: F.semibold, color: colors.text },
+        groupName: { fontSize: 11, fontFamily: F.medium, color: colors.primary, marginTop: 2 },
 
-        // Modal sheet
-        overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' },
+        // Bottom sheet modal
+        overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' },
         sheet: {
             position: 'absolute', bottom: 0, left: 0, right: 0,
             backgroundColor: colors.background,
             borderTopLeftRadius: 20, borderTopRightRadius: 20,
-            paddingHorizontal: 16, paddingBottom: 32,
+            paddingHorizontal: 16, paddingBottom: 28,
         },
         handle: {
             width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border,
             alignSelf: 'center', marginTop: 12, marginBottom: 16,
         },
-        sheetTitle:   { fontSize: 15, fontFamily: F.bold, color: colors.text, marginBottom: 8 },
+        sheetTitle:   { fontSize: 15, fontFamily: F.bold, color: colors.text, marginBottom: 4 },
         sheetRow: {
             flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-            paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: colors.border,
+            paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.border,
         },
         sheetRowText: { fontSize: 14, fontFamily: F.regular, color: colors.text },
+        checkbox: {
+            width: 20, height: 20, borderRadius: 4,
+            borderWidth: 1.5, borderColor: colors.border,
+            alignItems: 'center', justifyContent: 'center',
+        },
+        doneBtn: {
+            marginTop: 16, height: 48, borderRadius: 10,
+            backgroundColor: colors.primary,
+            alignItems: 'center', justifyContent: 'center',
+        },
+        doneBtnText: { fontSize: 15, fontFamily: F.semibold, color: '#fff' },
     });
 }
