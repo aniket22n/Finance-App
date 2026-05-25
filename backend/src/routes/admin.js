@@ -604,26 +604,35 @@ router.post('/groups/:groupId/activate', auth, adminOnly, async (req, res) => {
     }
 });
 
-// GET /api/admin/payments — All payments with semantic status + group + month filters
-// status=pending → DB 'paid' (submitted by member, awaiting admin action)
-// status=rejected → DB 'failed' or 'rejected'
-// status=verified → DB 'verified'
+// GET /api/admin/payments — payments with multi-select status + group + month filters
+// Semantic → DB mapping:
+//   awaiting → 'paid'  (submitted by member, awaiting admin action)
+//   pending  → 'pending' (not yet submitted by member)
+//   rejected → ['failed','rejected']
+//   verified → 'verified'
+// status can be a comma-separated string: "awaiting,verified"
 router.get('/payments', auth, adminOnly, async (req, res) => {
     try {
         const { status, group, month, limit = 100 } = req.query;
         const filter = {};
 
-        if (status === 'pending') {
-            filter.status = 'paid';
-        } else if (status === 'rejected') {
-            filter.status = { $in: ['failed', 'rejected'] };
-        } else if (status && status !== 'all') {
-            filter.status = status;
+        const statusArr = status
+            ? status.split(',').map(s => s.trim()).filter(Boolean)
+            : [];
+        const hasAll = statusArr.length === 0 || statusArr.includes('all');
+
+        if (!hasAll) {
+            const dbStatuses = [];
+            for (const s of statusArr) {
+                if (s === 'awaiting') dbStatuses.push('paid');
+                else if (s === 'pending') dbStatuses.push('pending');
+                else if (s === 'rejected') dbStatuses.push('failed', 'rejected');
+                else if (s === 'verified') dbStatuses.push('verified');
+            }
+            if (dbStatuses.length > 0) filter.status = { $in: [...new Set(dbStatuses)] };
         }
 
-        if (group && group !== 'all') {
-            filter.group = group;
-        }
+        if (group && group !== 'all') filter.group = group;
         if (month && month !== 'all') {
             const m = parseInt(month);
             if (!isNaN(m)) filter.month = m;

@@ -115,11 +115,13 @@ export const rejectAccountRequest = (requestId, reason) => api.post(`/admin/acco
 
 // ── Payments (admin) ──
 export const getAdminPayments = (status) => api.get('/payments/admin/list', { params: status ? { status } : {} });
-export const getAdminPaymentsList = ({ status, group, month } = {}) => {
+// statuses: string[] e.g. ['awaiting','verified'] — empty or ['all'] → no filter
+export const getAdminPaymentsList = ({ statuses = [], group, month } = {}) => {
     const params = {};
-    if (status && status !== 'all') params.status = status;
-    if (group  && group  !== 'all') params.group  = group;
-    if (month  && month  !== 'all') params.month  = month;
+    const active = statuses.filter(s => s !== 'all');
+    if (active.length > 0) params.status = active.join(',');
+    if (group && group !== 'all') params.group = group;
+    if (month && month !== 'all') params.month = month;
     return api.get('/admin/payments', { params });
 };
 export const getPendingPayments = () => api.get('/payments/pending/all');
