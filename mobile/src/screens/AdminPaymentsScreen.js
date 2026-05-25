@@ -19,10 +19,29 @@ const STATUS_OPTIONS = [
 ];
 
 const STATUS_INFO = [
-    { dot: '#F59E0B', label: 'Awaiting', desc: 'Member paid. Waiting for your approval.', action: 'You can Approve or Reject' },
-    { dot: '#6B7280', label: 'Pending',  desc: 'Member has not paid yet.',                action: 'Send a reminder'           },
-    { dot: '#10B981', label: 'Verified', desc: 'Payment done.',                           action: 'No action needed'          },
-    { dot: '#EF4444', label: 'Rejected', desc: 'Payment was rejected.',                   action: 'Member will pay again'     },
+    {
+        dot: '#F59E0B', label: 'Awaiting',
+        desc: 'Member submitted payment, waiting for admin to verify.',
+        actions: ['Admin can: Verify ✓  or  Reject ✗'],
+    },
+    {
+        dot: '#6B7280', label: 'Pending',
+        desc: "Member hasn't submitted payment yet.",
+        actions: ['Changes to Awaiting once member pays.'],
+    },
+    {
+        dot: '#10B981', label: 'Verified',
+        desc: 'Payment confirmed and collected.',
+        actions: ['Admin can: Change to Rejected if needed.'],
+    },
+    {
+        dot: '#EF4444', label: 'Rejected',
+        desc: 'Admin rejected the payment.',
+        actions: [
+            'Admin can: Change to Verified if rejected by mistake.',
+            'Member must resubmit to move it back to Awaiting.',
+        ],
+    },
 ];
 
 const BADGE = {
@@ -73,12 +92,14 @@ function StatusInfoModal({ visible, onClose, colors }) {
                                 <Text style={{ fontSize: 13, fontFamily: F.semibold, color: colors.text, marginBottom: 2 }}>
                                     {s.label}
                                 </Text>
-                                <Text style={{ fontSize: 12, fontFamily: F.regular, color: colors.textSecondary, lineHeight: 17 }}>
+                                <Text style={{ fontSize: 12, fontFamily: F.regular, color: colors.textSecondary, lineHeight: 17, marginBottom: 4 }}>
                                     {s.desc}
                                 </Text>
-                                <Text style={{ fontSize: 11, fontFamily: F.medium, color: s.dot, marginTop: 3 }}>
-                                    👉 {s.action}
-                                </Text>
+                                {s.actions.map((a, ai) => (
+                                    <Text key={ai} style={{ fontSize: 11, fontFamily: F.medium, color: s.dot, lineHeight: 16 }}>
+                                        {a}
+                                    </Text>
+                                ))}
                             </View>
                         </View>
                     ))}
