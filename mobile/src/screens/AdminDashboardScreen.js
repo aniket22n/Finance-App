@@ -171,8 +171,7 @@ export default function AdminDashboardScreen({ navigation }) {
     { label: 'All Groups', value: 'all' },
     ...groups.map(g => ({ label: g.name, value: g._id })),
   ];
-  const activeGroup = groups.find(g => g._id === selectedGroup);
-  const maxMonth    = activeGroup ? (activeGroup.totalMonths || 12) : 24;
+  const maxMonth = groups.length > 0 ? Math.max(...groups.map(g => g.totalMonths || 0)) : 24;
   const monthOptions = [
     { label: 'All Months', value: 'all' },
     ...Array.from({ length: maxMonth }, (_, i) => ({ label: `Month ${i + 1}`, value: i + 1 })),
@@ -262,24 +261,29 @@ export default function AdminDashboardScreen({ navigation }) {
           <>
             <View style={styles.statCard}>
               {[
-                { label: 'Collected', amount: filteredStats.verifiedAmount, count: filteredStats.verifiedCount, color: colors.success, bg: colors.successLight },
-                { label: 'Pending',   amount: filteredStats.pendingAmount,  count: filteredStats.pendingCount,  color: colors.warning, bg: colors.warningLight },
-                { label: 'Total EMI', amount: filteredStats.verifiedAmount + filteredStats.pendingAmount, count: totalPayments, color: colors.primary, bg: colors.primaryLight },
+                { label: 'Collected', filter: 'verified', amount: filteredStats.verifiedAmount, count: filteredStats.verifiedCount, color: colors.success, bg: colors.successLight },
+                { label: 'Pending',   filter: 'pending',  amount: filteredStats.pendingAmount,  count: filteredStats.pendingCount,  color: colors.warning, bg: colors.warningLight },
+                { label: 'Total EMI', filter: 'all',      amount: filteredStats.verifiedAmount + filteredStats.pendingAmount, count: totalPayments, color: colors.primary, bg: colors.primaryLight },
               ].map((s, i) => (
                 <React.Fragment key={s.label}>
                   {i > 0 && <View style={styles.statVDivider} />}
-                  <View style={styles.statSection}>
-                    {/* Colored top accent bar */}
+                  <TouchableOpacity
+                    style={styles.statSection}
+                    activeOpacity={0.65}
+                    onPress={() => navigation.navigate('Payments', {
+                      activeFilter: s.filter,
+                      group: selectedGroup,
+                      month: selectedMonth,
+                    })}
+                  >
                     <View style={[styles.statAccent, { backgroundColor: s.color }]} />
-                    {/* Count badge */}
                     <View style={[styles.statBadge, { backgroundColor: s.bg }]}>
                       <Text style={[styles.statBadgeText, { color: s.color }]}>{s.count}</Text>
                     </View>
-                    {/* Amount */}
                     <Text style={[styles.statAmount, { color: s.color }]}>{fmt(s.amount)}</Text>
-                    {/* Label */}
                     <Text style={styles.statLabel}>{s.label}</Text>
-                  </View>
+                    <Ionicons name="arrow-forward" size={11} color={s.color} style={{ marginTop: 4, opacity: 0.7 }} />
+                  </TouchableOpacity>
                 </React.Fragment>
               ))}
             </View>

@@ -184,12 +184,19 @@ export default function AdminPaymentsScreen({ navigation, route }) {
     const [statusOpen, setStatusOpen] = useState(false);
 
     useEffect(() => {
-        const incoming = route?.params?.activeFilter;
-        if (!incoming || incoming === 'all') return;
-        const map = { pending: 'awaiting', verified: 'verified', rejected: 'rejected' };
-        const mapped = map[incoming] || incoming;
-        if (STATUS_OPTIONS.some(o => o.id === mapped)) setStatuses([mapped]);
-    }, [route?.params?.activeFilter]);
+        const { activeFilter, group: inGroup, month: inMonth } = route?.params || {};
+        if (activeFilter !== undefined) {
+            if (activeFilter === 'all') {
+                setStatuses(['all']);
+            } else {
+                const map = { pending: 'awaiting', verified: 'verified', rejected: 'rejected', awaiting: 'awaiting' };
+                const mapped = map[activeFilter] || activeFilter;
+                if (STATUS_OPTIONS.some(o => o.id === mapped)) setStatuses([mapped]);
+            }
+        }
+        if (inGroup !== undefined) setGroupId(inGroup);
+        if (inMonth !== undefined) setMonth(inMonth !== 'all' ? Number(inMonth) : 'all');
+    }, [route?.params?.activeFilter, route?.params?.group, route?.params?.month]);
 
     useEffect(() => {
         getGroups().then(r => setGroups(r.data.groups || [])).catch(() => {});
@@ -224,8 +231,7 @@ export default function AdminPaymentsScreen({ navigation, route }) {
         { value: 'all', label: 'All Groups' },
         ...groups.map(g => ({ value: g._id, label: g.name })),
     ];
-    const activeGroup = groups.find(g => g._id === groupId);
-    const maxMonth  = activeGroup?.totalMonths || 24;
+    const maxMonth = groups.length > 0 ? Math.max(...groups.map(g => g.totalMonths || 0)) : 24;
     const monthItems = [
         { value: 'all', label: 'All Months' },
         ...Array.from({ length: maxMonth }, (_, i) => ({ value: i + 1, label: `Month ${i + 1}` })),
