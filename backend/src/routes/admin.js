@@ -42,7 +42,7 @@ router.get('/dashboard', auth, adminOnly, async (req, res) => {
         ]);
 
         const pendingPayments = await Payment.aggregate([
-            { $match: { status: { $in: ['pending', 'paid'] } } },
+            { $match: { status: { $in: ['pending', 'paid', 'rejected', 'failed'] } } },
             { $group: { _id: null, total: { $sum: '$amount' }, count: { $sum: 1 } } },
         ]);
 
@@ -107,7 +107,7 @@ router.get('/payments/stats', auth, adminOnly, async (req, res) => {
                 { $group: { _id: null, total: { $sum: '$amount' }, count: { $sum: 1 } } },
             ]),
             Payment.aggregate([
-                { $match: { ...filter, status: 'pending' } },
+                { $match: { ...filter, status: { $in: ['pending', 'paid', 'rejected', 'failed'] } } },
                 { $group: { _id: null, total: { $sum: '$amount' }, count: { $sum: 1 } } },
             ]),
         ]);
