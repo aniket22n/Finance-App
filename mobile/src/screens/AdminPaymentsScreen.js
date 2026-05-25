@@ -1,7 +1,7 @@
-import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import {
     View, Text, ScrollView, TouchableOpacity, StyleSheet,
-    ActivityIndicator, RefreshControl, Modal,
+    ActivityIndicator, RefreshControl, Modal, FlatList,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,12 +9,13 @@ import { getAdminPaymentsList, getGroups } from '../services/api';
 import { useTheme } from '../context/ThemeContext';
 import { F } from '../theme';
 
+// ─── Status options with colour dots ────────────────────────────────────────
 const STATUS_OPTIONS = [
-    { id: 'all',      label: 'All',      dot: null        },
-    { id: 'awaiting', label: 'Awaiting', dot: '#F59E0B'   },
-    { id: 'pending',  label: 'Pending',  dot: '#6B7280'   },
-    { id: 'verified', label: 'Verified', dot: '#10B981'   },
-    { id: 'rejected', label: 'Rejected', dot: '#EF4444'   },
+    { id: 'all',      label: 'All Statuses', dot: null       },
+    { id: 'awaiting', label: 'Awaiting',     dot: '#F59E0B'  },
+    { id: 'pending',  label: 'Pending',      dot: '#6B7280'  },
+    { id: 'verified', label: 'Verified',     dot: '#10B981'  },
+    { id: 'rejected', label: 'Rejected',     dot: '#EF4444'  },
 ];
 
 const BADGE = {
@@ -36,114 +37,138 @@ function timeAgo(dateStr) {
     return `${Math.floor(hrs / 24)}d ago`;
 }
 
-// Unified dropdown for all three chips
-function DropdownMenu({ visible, anchor, items, multiSelect, selected, onToggle, onSelect, onClose, colors }) {
-    if (!visible || !anchor) return null;
-
-    const styles = ddStyles(colors);
-
-    // Clamp so dropdown never goes off right edge (screen width ~360–420)
-    const dropW = Math.max(anchor.w, 160);
-    const clampLeft = Math.min(anchor.x, 360 - dropW - 8);
-
+// ─── Single-select dropdown (Group / Month) — mirrors dashboard exactly ──────
+function Dropdown({ label, value, options, onSelect, colors, styles, icon }) {
+    const [open, setOpen] = useState(false);
+    const selected  = options.find(o => o.value === value);
+    const isFiltered = value !== 'all';
     return (
-        <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-            <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onClose} />
-            <View style={[styles.card, { top: anchor.y + anchor.h + 6, left: clampLeft, minWidth: dropW }]}>
-                {items.map((item, idx) => {
-                    const isActive = multiSelect
-                        ? (item.id === 'all' ? selected.includes('all') : selected.includes(item.id))
-                        : selected === item.id;
-                    const isLast = idx === items.length - 1;
+        <>
+            <TouchableOpacity
+                style={[styles.dropBtn, isFiltered && { borderColor: colors.primary, backgroundColor: colors.primaryLight }]}
+                onPress={() => setOpen(true)}
+                activeOpacity={0.75}
+            >
+                <Ionicons name={icon} size={14} color={isFiltered ? colors.primary : colors.textSecondary} />
+                <Text style={[styles.dropValue, isFiltered && { color: colors.primary }]} numberOfLines={1}>
+                    {selected?.label || label}
+                </Text>
+                <Ionicons name="chevron-down" size={12} color={isFiltered ? colors.primary : colors.textTertiary} />
+            </TouchableOpacity>
 
-                    return (
-                        <TouchableOpacity
-                            key={item.id}
-                            style={[styles.row, isLast && styles.rowLast]}
-                            onPress={() => {
-                                if (multiSelect) {
-                                    onToggle(item.id);
-                                } else {
-                                    onSelect(item.id);
-                                    onClose();
-                                }
-                            }}
-                            activeOpacity={0.65}
-                        >
-                            <View style={styles.rowLeft}>
-                                {item.dot !== undefined ? (
-                                    <View style={[
-                                        styles.dot,
-                                        { backgroundColor: item.dot || colors.border },
-                                    ]} />
-                                ) : null}
-                                <Text style={[styles.label, isActive && { color: colors.primary, fontFamily: F.semibold }]}>
-                                    {item.label}
-                                </Text>
+            <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}>
+                <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => setOpen(false)}>
+                    <View style={styles.sheet}>
+                        <View style={styles.handle} />
+                        <View style={styles.sheetHeader}>
+                            <View style={[styles.sheetIconBox, { backgroundColor: colors.primaryLight }]}>
+                                <Ionicons name={icon} size={16} color={colors.primary} />
                             </View>
-                            {multiSelect ? (
-                                <View style={[styles.check, isActive && { backgroundColor: colors.primary, borderColor: colors.primary }]}>
-                                    {isActive && <Ionicons name="checkmark" size={10} color="#fff" />}
-                                </View>
-                            ) : (
-                                isActive && <Ionicons name="checkmark" size={15} color={colors.primary} />
-                            )}
-                        </TouchableOpacity>
-                    );
-                })}
-                {multiSelect && (
-                    <TouchableOpacity style={styles.doneRow} onPress={onClose} activeOpacity={0.75}>
-                        <Text style={styles.doneTxt}>Done</Text>
-                    </TouchableOpacity>
-                )}
-            </View>
-        </Modal>
+                            <Text style={styles.sheetTitle}>Select {label}</Text>
+                        </View>
+                        <FlatList
+                            data={options}
+                            keyExtractor={o => String(o.value)}
+                            contentContainerStyle={styles.optionList}
+                            renderItem={({ item }) => {
+                                const active = item.value === value;
+                                return (
+                                    <TouchableOpacity
+                                        style={[styles.option, active && { backgroundColor: colors.primaryLight, borderColor: colors.primary }]}
+                                        onPress={() => { onSelect(item.value); setOpen(false); }}
+                                        activeOpacity={0.7}
+                                    >
+                                        <Text style={[styles.optionTxt, active && { color: colors.primary, fontFamily: F.semibold }]}>
+                                            {item.label}
+                                        </Text>
+                                        {active && (
+                                            <View style={[styles.optionCheck, { backgroundColor: colors.primary }]}>
+                                                <Ionicons name="checkmark" size={11} color="#fff" />
+                                            </View>
+                                        )}
+                                    </TouchableOpacity>
+                                );
+                            }}
+                        />
+                    </View>
+                </TouchableOpacity>
+            </Modal>
+        </>
     );
 }
 
-function ddStyles(colors) {
-    return StyleSheet.create({
-        card: {
-            position: 'absolute',
-            backgroundColor: colors.backgroundSecondary,
-            borderRadius: 12,
-            borderWidth: 1,
-            borderColor: colors.border,
-            elevation: 12,
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: 6 },
-            shadowOpacity: 0.22,
-            shadowRadius: 12,
-            overflow: 'hidden',
-        },
-        row: {
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            paddingHorizontal: 14,
-            paddingVertical: 12,
-            borderBottomWidth: StyleSheet.hairlineWidth,
-            borderBottomColor: colors.border,
-        },
-        rowLast: { borderBottomWidth: 0 },
-        rowLeft: { flexDirection: 'row', alignItems: 'center', gap: 9, flex: 1 },
-        dot: { width: 8, height: 8, borderRadius: 4 },
-        label: { fontSize: 13, fontFamily: F.medium, color: colors.text },
-        check: {
-            width: 17, height: 17, borderRadius: 4,
-            borderWidth: 1.5, borderColor: colors.border,
-            alignItems: 'center', justifyContent: 'center',
-        },
-        doneRow: {
-            paddingVertical: 11,
-            alignItems: 'center',
-            borderTopWidth: StyleSheet.hairlineWidth,
-            borderTopColor: colors.border,
-        },
-        doneTxt: { fontSize: 13, fontFamily: F.semibold, color: colors.primary },
-    });
+// ─── Multi-select status sheet — same visual style, checkboxes + Done ────────
+function StatusDropdown({ statuses, onToggle, onClose, onOpen, open, colors, styles }) {
+    const isAll      = statuses.includes('all');
+    const isFiltered = !isAll;
+    const label = isAll
+        ? 'Status'
+        : statuses.length === 1
+            ? STATUS_OPTIONS.find(o => o.id === statuses[0])?.label || 'Status'
+            : `${statuses.length} selected`;
+
+    return (
+        <>
+            <TouchableOpacity
+                style={[styles.dropBtn, isFiltered && { borderColor: colors.primary, backgroundColor: colors.primaryLight }]}
+                onPress={onOpen}
+                activeOpacity={0.75}
+            >
+                <Ionicons name="funnel" size={14} color={isFiltered ? colors.primary : colors.textSecondary} />
+                <Text style={[styles.dropValue, isFiltered && { color: colors.primary }]} numberOfLines={1}>
+                    {label}
+                </Text>
+                <Ionicons name="chevron-down" size={12} color={isFiltered ? colors.primary : colors.textTertiary} />
+            </TouchableOpacity>
+
+            <Modal visible={open} transparent animationType="slide" onRequestClose={onClose}>
+                <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onClose}>
+                    <View style={styles.sheet}>
+                        <View style={styles.handle} />
+                        <View style={styles.sheetHeader}>
+                            <View style={[styles.sheetIconBox, { backgroundColor: colors.primaryLight }]}>
+                                <Ionicons name="funnel" size={16} color={colors.primary} />
+                            </View>
+                            <Text style={styles.sheetTitle}>Filter by Status</Text>
+                        </View>
+                        <View style={styles.optionList}>
+                            {STATUS_OPTIONS.map(opt => {
+                                const active = opt.id === 'all' ? isAll : statuses.includes(opt.id);
+                                return (
+                                    <TouchableOpacity
+                                        key={opt.id}
+                                        style={[styles.option, active && { backgroundColor: colors.primaryLight, borderColor: colors.primary }]}
+                                        onPress={() => onToggle(opt.id)}
+                                        activeOpacity={0.7}
+                                    >
+                                        <View style={styles.optionLeft}>
+                                            {opt.dot !== null ? (
+                                                <View style={[styles.statusDot, { backgroundColor: opt.dot || colors.border }]} />
+                                            ) : (
+                                                <View style={[styles.statusDot, { backgroundColor: colors.border }]} />
+                                            )}
+                                            <Text style={[styles.optionTxt, active && { color: colors.primary, fontFamily: F.semibold }]}>
+                                                {opt.label}
+                                            </Text>
+                                        </View>
+                                        <View style={[styles.checkbox, active && { backgroundColor: colors.primary, borderColor: colors.primary }]}>
+                                            {active && <Ionicons name="checkmark" size={11} color="#fff" />}
+                                        </View>
+                                    </TouchableOpacity>
+                                );
+                            })}
+                        </View>
+                        <TouchableOpacity style={[styles.doneBtn, { backgroundColor: colors.primary }]} onPress={onClose} activeOpacity={0.85}>
+                            <Text style={styles.doneTxt}>Done</Text>
+                        </TouchableOpacity>
+                    </View>
+                </TouchableOpacity>
+            </Modal>
+        </>
+    );
 }
 
+// ─── Screen ──────────────────────────────────────────────────────────────────
 export default function AdminPaymentsScreen({ navigation, route }) {
     const { colors } = useTheme();
 
@@ -156,14 +181,7 @@ export default function AdminPaymentsScreen({ navigation, route }) {
     const [loading,    setLoading]    = useState(true);
     const [refreshing, setRefreshing] = useState(false);
 
-    const [openDD,  setOpenDD]  = useState(null); // 'status' | 'group' | 'month' | null
-    const [anchors, setAnchors] = useState({});
-
-    const statusRef = useRef(null);
-    const groupRef  = useRef(null);
-    const monthRef  = useRef(null);
-
-    const refs = { status: statusRef, group: groupRef, month: monthRef };
+    const [statusOpen, setStatusOpen] = useState(false);
 
     useEffect(() => {
         const incoming = route?.params?.activeFilter;
@@ -193,15 +211,6 @@ export default function AdminPaymentsScreen({ navigation, route }) {
 
     const onRefresh = () => { setRefreshing(true); load(); };
 
-    const openDropdown = (key) => {
-        refs[key].current?.measure((_fx, _fy, w, h, px, py) => {
-            setAnchors(prev => ({ ...prev, [key]: { x: px, y: py, w, h } }));
-            setOpenDD(key);
-        });
-    };
-
-    const closeDD = () => setOpenDD(null);
-
     const toggleStatus = (id) => {
         setStatuses(prev => {
             if (id === 'all') return ['all'];
@@ -212,31 +221,15 @@ export default function AdminPaymentsScreen({ navigation, route }) {
     };
 
     const groupItems = [
-        { id: 'all', label: 'All Groups' },
-        ...groups.map(g => ({ id: g._id, label: g.name })),
+        { value: 'all', label: 'All Groups' },
+        ...groups.map(g => ({ value: g._id, label: g.name })),
     ];
-    const selectedGroup = groups.find(g => g._id === groupId);
-    const maxMonth = selectedGroup?.totalMonths || 24;
+    const activeGroup = groups.find(g => g._id === groupId);
+    const maxMonth  = activeGroup?.totalMonths || 24;
     const monthItems = [
-        { id: 'all', label: 'All Months' },
-        ...Array.from({ length: maxMonth }, (_, i) => ({ id: i + 1, label: `Month ${i + 1}` })),
+        { value: 'all', label: 'All Months' },
+        ...Array.from({ length: maxMonth }, (_, i) => ({ value: i + 1, label: `Month ${i + 1}` })),
     ];
-
-    const isAllStatus    = statuses.includes('all');
-    const hasGroupFilter = groupId !== 'all';
-    const hasMonthFilter = month !== 'all';
-
-    const statusLabel = isAllStatus
-        ? 'Status'
-        : statuses.length === 1
-            ? STATUS_OPTIONS.find(o => o.id === statuses[0])?.label || 'Status'
-            : `${statuses.length} selected`;
-    const groupLabel = hasGroupFilter
-        ? (groupItems.find(g => g.id === groupId)?.label || 'Group')
-        : 'Group';
-    const monthLabel = hasMonthFilter
-        ? (monthItems.find(m => m.id === month)?.label || 'Month')
-        : 'Month';
 
     const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -246,58 +239,32 @@ export default function AdminPaymentsScreen({ navigation, route }) {
                 <Text style={styles.title}>Payments</Text>
             </View>
 
-            {/* ── Three filter chips ── */}
+            {/* ── Filter row ── */}
             <View style={styles.filterRow}>
-                <TouchableOpacity
-                    ref={statusRef}
-                    style={[styles.chip, !isAllStatus && styles.chipActive]}
-                    onPress={() => openDropdown('status')}
-                    activeOpacity={0.75}
-                >
-                    <Ionicons name="funnel-outline" size={13}
-                        color={!isAllStatus ? colors.primary : colors.textSecondary} />
-                    <Text style={[styles.chipTxt, !isAllStatus && styles.chipTxtActive]} numberOfLines={1}>
-                        {statusLabel}
-                    </Text>
-                    <Ionicons
-                        name={openDD === 'status' ? 'chevron-up' : 'chevron-down'}
-                        size={11} color={!isAllStatus ? colors.primary : colors.textSecondary}
+                <View style={styles.dropWrap}>
+                    <StatusDropdown
+                        open={statusOpen}
+                        statuses={statuses}
+                        onToggle={toggleStatus}
+                        onOpen={() => setStatusOpen(true)}
+                        onClose={() => setStatusOpen(false)}
+                        colors={colors} styles={styles}
                     />
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                    ref={groupRef}
-                    style={[styles.chip, hasGroupFilter && styles.chipActive]}
-                    onPress={() => openDropdown('group')}
-                    activeOpacity={0.75}
-                >
-                    <Ionicons name="people-outline" size={13}
-                        color={hasGroupFilter ? colors.primary : colors.textSecondary} />
-                    <Text style={[styles.chipTxt, hasGroupFilter && styles.chipTxtActive]} numberOfLines={1}>
-                        {groupLabel}
-                    </Text>
-                    <Ionicons
-                        name={openDD === 'group' ? 'chevron-up' : 'chevron-down'}
-                        size={11} color={hasGroupFilter ? colors.primary : colors.textSecondary}
+                </View>
+                <View style={styles.dropWrap}>
+                    <Dropdown
+                        label="Group" value={groupId} options={groupItems}
+                        onSelect={setGroupId} colors={colors} styles={styles}
+                        icon="people"
                     />
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                    ref={monthRef}
-                    style={[styles.chip, hasMonthFilter && styles.chipActive]}
-                    onPress={() => openDropdown('month')}
-                    activeOpacity={0.75}
-                >
-                    <Ionicons name="calendar-outline" size={13}
-                        color={hasMonthFilter ? colors.primary : colors.textSecondary} />
-                    <Text style={[styles.chipTxt, hasMonthFilter && styles.chipTxtActive]} numberOfLines={1}>
-                        {monthLabel}
-                    </Text>
-                    <Ionicons
-                        name={openDD === 'month' ? 'chevron-up' : 'chevron-down'}
-                        size={11} color={hasMonthFilter ? colors.primary : colors.textSecondary}
+                </View>
+                <View style={styles.dropWrap}>
+                    <Dropdown
+                        label="Month" value={month} options={monthItems}
+                        onSelect={setMonth} colors={colors} styles={styles}
+                        icon="calendar"
                     />
-                </TouchableOpacity>
+                </View>
             </View>
 
             <Text style={styles.countLabel}>
@@ -357,42 +324,6 @@ export default function AdminPaymentsScreen({ navigation, route }) {
                     })
                 )}
             </ScrollView>
-
-            {/* Status dropdown — multi-select */}
-            <DropdownMenu
-                visible={openDD === 'status'}
-                anchor={anchors.status}
-                items={STATUS_OPTIONS}
-                multiSelect
-                selected={statuses}
-                onToggle={toggleStatus}
-                onClose={closeDD}
-                colors={colors}
-            />
-
-            {/* Group dropdown — single select */}
-            <DropdownMenu
-                visible={openDD === 'group'}
-                anchor={anchors.group}
-                items={groupItems}
-                multiSelect={false}
-                selected={groupId}
-                onSelect={setGroupId}
-                onClose={closeDD}
-                colors={colors}
-            />
-
-            {/* Month dropdown — single select */}
-            <DropdownMenu
-                visible={openDD === 'month'}
-                anchor={anchors.month}
-                items={monthItems}
-                multiSelect={false}
-                selected={month}
-                onSelect={setMonth}
-                onClose={closeDD}
-                colors={colors}
-            />
         </View>
     );
 }
@@ -406,52 +337,79 @@ function makeStyles(colors) {
         },
         title: { fontSize: 20, fontFamily: F.bold, color: colors.text },
 
-        filterRow: {
-            flexDirection: 'row',
-            paddingHorizontal: 12,
-            paddingVertical: 10,
-            gap: 8,
+        // ── Filter row ────────────────────────────────────────────────────────
+        filterRow: { flexDirection: 'row', paddingHorizontal: 12, paddingVertical: 10, gap: 6 },
+        dropWrap:  { flex: 1 },
+        dropBtn: {
+            flexDirection: 'row', alignItems: 'center', gap: 5,
+            backgroundColor: colors.background, borderWidth: 1.5, borderColor: colors.border,
+            borderRadius: 20, paddingHorizontal: 10, paddingVertical: 7,
         },
-        chip: {
-            flex: 1,
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 4,
-            height: 36,
-            borderRadius: 10,
-            borderWidth: 1,
-            borderColor: colors.border,
-            backgroundColor: colors.backgroundSecondary,
-            paddingHorizontal: 8,
-        },
-        chipActive: {
-            borderColor: colors.primary,
-            backgroundColor: colors.primary + '18',
-        },
-        chipTxt: {
-            flex: 1, fontSize: 12, fontFamily: F.medium,
-            color: colors.textSecondary, textAlign: 'center',
-        },
-        chipTxtActive: { color: colors.primary, fontFamily: F.semibold },
+        dropValue: { flex: 1, fontSize: 12, fontFamily: F.medium, color: colors.text },
 
+        // ── Bottom sheet ──────────────────────────────────────────────────────
+        overlay:  { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+        sheet: {
+            backgroundColor: colors.background,
+            borderTopLeftRadius: 24, borderTopRightRadius: 24,
+            paddingBottom: 36, maxHeight: '70%',
+        },
+        handle: {
+            width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border,
+            alignSelf: 'center', marginTop: 10, marginBottom: 16,
+        },
+        sheetHeader: {
+            flexDirection: 'row', alignItems: 'center', gap: 10,
+            paddingHorizontal: 16, paddingBottom: 14,
+            borderBottomWidth: 1, borderBottomColor: colors.border,
+            marginBottom: 4,
+        },
+        sheetIconBox: {
+            width: 32, height: 32, borderRadius: 9,
+            alignItems: 'center', justifyContent: 'center',
+        },
+        sheetTitle: { fontSize: 15, fontFamily: F.semibold, color: colors.text },
+        optionList: { paddingHorizontal: 12, paddingTop: 8, gap: 6 },
+        option: {
+            flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+            paddingHorizontal: 14, paddingVertical: 13,
+            borderRadius: 12, borderWidth: 1, borderColor: 'transparent',
+        },
+        optionLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
+        optionTxt:   { fontSize: 14, fontFamily: F.regular, color: colors.text },
+        optionCheck: {
+            width: 20, height: 20, borderRadius: 10,
+            alignItems: 'center', justifyContent: 'center',
+        },
+        statusDot: { width: 9, height: 9, borderRadius: 5 },
+        checkbox: {
+            width: 20, height: 20, borderRadius: 5,
+            borderWidth: 1.5, borderColor: colors.border,
+            alignItems: 'center', justifyContent: 'center',
+        },
+        doneBtn: {
+            marginHorizontal: 16, marginTop: 12, height: 48,
+            borderRadius: 12, alignItems: 'center', justifyContent: 'center',
+        },
+        doneTxt: { fontSize: 15, fontFamily: F.semibold, color: '#fff' },
+
+        // ── List ──────────────────────────────────────────────────────────────
         countLabel: {
             fontSize: 11, fontFamily: F.semibold, color: colors.textTertiary,
             letterSpacing: 0.5, paddingHorizontal: 16, paddingBottom: 6,
         },
-
         list:        { flex: 1 },
         listContent: { paddingHorizontal: 12, paddingBottom: 90 },
         center:      { paddingTop: 60, alignItems: 'center' },
-        empty: { paddingTop: 60, alignItems: 'center', justifyContent: 'center', gap: 10 },
-        emptyTxt: { fontSize: 13, fontFamily: F.regular, color: colors.textSecondary },
+        empty:       { paddingTop: 60, alignItems: 'center', justifyContent: 'center', gap: 10 },
+        emptyTxt:    { fontSize: 13, fontFamily: F.regular, color: colors.textSecondary },
 
         card: {
             backgroundColor: colors.backgroundSecondary,
             borderWidth: 1, borderColor: colors.border,
             borderRadius: 10, paddingVertical: 10, paddingHorizontal: 12, marginBottom: 8,
         },
-        cardRow:  { flexDirection: 'row', alignItems: 'center' },
+        cardRow:   { flexDirection: 'row', alignItems: 'center' },
         avatar: {
             width: 38, height: 38, borderRadius: 19,
             backgroundColor: colors.primary + '18',
