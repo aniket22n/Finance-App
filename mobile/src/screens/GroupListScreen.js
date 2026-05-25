@@ -97,7 +97,7 @@ function makeStyles(colors) {
         },
         title:    { fontSize: 20, fontFamily: F.bold, color: colors.text },
         count:    { fontSize: 14, fontFamily: F.regular, color: colors.textSecondary, marginBottom: 2 },
-        list:     { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 90 },
+        list:     { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 90, gap: 12 },
         emptyBox: {
             borderRadius: 12,
             borderWidth: 2,

@@ -171,4 +171,17 @@ router.get('/pending/all', auth, adminOnly, async (req, res) => {
     }
 });
 
+// GET /api/payments/my/pending — Current user's pending payments
+router.get('/my/pending', auth, async (req, res) => {
+    try {
+        const payments = await Payment.find({ user: req.user._id, status: 'pending' })
+            .populate('group', 'name emiAmount reducedEmiAmount potAmount dueDate')
+            .sort({ createdAt: -1 })
+            .lean();
+        res.json({ success: true, data: { payments } });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
 module.exports = router;

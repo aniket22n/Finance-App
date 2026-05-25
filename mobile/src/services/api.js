@@ -90,6 +90,7 @@ export const removeMember = (groupId, userId) => api.delete(`/groups/${groupId}/
 export const initiatePayment = (data) => api.post('/payments/initiate', data);
 export const getGroupPayments = (groupId, params) => api.get(`/payments/group/${groupId}`, { params });
 export const getUserPayments = (userId) => api.get(`/payments/user/${userId}`);
+export const getMyPendingPayments = () => api.get('/payments/my/pending');
 
 // ── EMI ──
 export const getEmiCycles = (groupId) => api.get(`/emi/group/${groupId}`);
@@ -99,6 +100,7 @@ export const getPlannedWinner   = (groupId) => api.get(`/emi/planned-winner/${gr
 
 // ── Admin ──
 export const getAdminDashboard = () => api.get('/admin/dashboard');
+export const getAdminPaymentStats = (groupId, month) => api.get('/admin/payments/stats', { params: { ...(groupId ? { groupId } : {}), ...(month ? { month } : {}) } });
 export const getAdminUsers = (params) => api.get('/admin/users', { params });
 export const updateUserRole = (userId, role) => api.put(`/admin/users/${userId}/role`, { role });
 export const deleteUser = (userId) => api.delete(`/admin/users/${userId}`);

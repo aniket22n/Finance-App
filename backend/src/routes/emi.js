@@ -5,6 +5,7 @@ const Payment = require('../models/Payment');
 const { auth, adminOnly } = require('../middleware/auth');
 const { calculateMonthlyDues, calculatePotTotal } = require('../utils/emiEngine');
 const { sendPushNotification, sendBulkNotifications } = require('../utils/notifications');
+const { notifyUsers } = require('../utils/notify');
 const { validate, createCycleValidations } = require('../middleware/validators');
 
 const router = express.Router();
@@ -110,43 +111,49 @@ router.post('/cycle', auth, adminOnly, createCycleValidations, validate, async (
         }
 
         // Send notifications
-        const winnerMember = group.members.find(m => m._id.toString() === winnerId);
-        if (winnerMember && winnerMember.expoPushToken) {
-            await sendPushNotification(
+        const allMemberIds  = group.members.map(m => m._id);
+        const otherMemberIds = group.members.filter(m => m._id.toString() !== winnerId).map(m => m._id);
+        const winnerMember  = group.members.find(m => m._id.toString() === winnerId);
+        const winnerName    = winnerMember?.name || 'A member';
+
+        // Push: winner
+        if (winnerMember?.expoPushToken) {
+            sendPushNotification(
                 winnerMember.expoPushToken,
-                '🎉 Congratulations! You won the pot!',
-                `You are the pot holder for Month ${nextMonth}. Your fixed EMI is ₹${monthEmi}.`,
+                'Congratulations! You won the pot!',
+                `You are the pot holder for Month ${nextMonth} in ${group.name}. Your EMI is now ₹${monthReduced}.`,
                 { type: 'pot_winner', groupId, month: nextMonth }
-            );
+            ).catch(() => {});
         }
 
-        // Notify all other members
+        // Push: other members
         const otherTokens = group.members
             .filter(m => m._id.toString() !== winnerId && m.expoPushToken)
             .map(m => m.expoPushToken);
-
         if (otherTokens.length > 0) {
-            await sendBulkNotifications(
+            sendBulkNotifications(
                 otherTokens,
-                `📢 Month ${nextMonth} EMI Due`,
-                `Reducing EMI of ₹${monthReduced} is due for ${group.name}. Pay before the deadline.`,
-                { type: 'emi_due', groupId, month: nextMonth }
-            );
+                `Pot Draw — Month ${nextMonth}`,
+                `${winnerName} won the pot in ${group.name}. Month ${nextMonth} EMI of ₹${monthReduced} is now due.`,
+                { type: 'pot_draw', groupId, month: nextMonth }
+            ).catch(() => {});
         }
 
-        // Notify next eligible members
-        const nextEligibleTokens = group.members
-            .filter(m => m._id.toString() !== winnerId && !pastWinnerIds.includes(m._id.toString()) && m.expoPushToken)
-            .map(m => m.expoPushToken);
+        // Bell (in-app): winner
+        notifyUsers([winnerMember._id], {
+            type: 'pot_winner',
+            title: 'You won the pot!',
+            body: `Congratulations! You are the pot holder for Month ${nextMonth} in ${group.name}. Your EMI is now ₹${monthReduced}.`,
+            data: { groupId: String(groupId), month: nextMonth },
+        });
 
-        if (nextEligibleTokens.length > 0) {
-            await sendBulkNotifications(
-                nextEligibleTokens,
-                `🎰 Next Draw Coming Soon!`,
-                `You are eligible for the next pot draw in ${group.name}! ${nextEligibleTokens.length} members remaining.`,
-                { type: 'next_draw', groupId }
-            );
-        }
+        // Bell (in-app): all other members
+        notifyUsers(otherMemberIds, {
+            type: 'pot_draw',
+            title: `Pot Draw — Month ${nextMonth}`,
+            body: `${winnerName} won the pot in ${group.name}. Your EMI of ₹${monthReduced} is now due.`,
+            data: { groupId: String(groupId), month: nextMonth },
+        });
 
         res.status(201).json({ cycle, dues });
     } catch (error) {

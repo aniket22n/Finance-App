@@ -1,14 +1,16 @@
 import React, { useMemo, useState, useCallback } from 'react';
 import {
     View, Text, ScrollView, RefreshControl, TouchableOpacity,
-    StyleSheet, ActivityIndicator,
+    StyleSheet, ActivityIndicator, Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
-import { getGroups, getAdminDashboard, getGroupHealth } from '../services/api';
+import { getGroups, getAdminDashboard, getGroupHealth, getMyPendingPayments } from '../services/api';
+
+const SW = Dimensions.get('window').width;
 import Avatar from '../components/Avatar';
 import GroupCard from '../components/GroupCard';
 import NotificationsBell from '../components/NotificationsBell';
@@ -135,12 +137,17 @@ function AdminHomeView({ navigation, user, colors }) {
 
 function MemberHomeView({ navigation, user, colors }) {
     const [groups, setGroups] = useState([]);
+    const [pendingPayments, setPendingPayments] = useState([]);
     const [refreshing, setRefreshing] = useState(false);
 
     const loadData = async () => {
         try {
-            const res = await getGroups();
-            setGroups(res.data.groups || []);
+            const [groupsRes, pendingRes] = await Promise.all([
+                getGroups(),
+                getMyPendingPayments(),
+            ]);
+            setGroups(groupsRes.data.groups || []);
+            setPendingPayments(pendingRes.data.data?.payments || []);
         } catch (err) {
             console.log('Member home load error:', err.message);
         }
@@ -165,12 +172,7 @@ function MemberHomeView({ navigation, user, colors }) {
                     <Text style={styles.greeting}>Hi,</Text>
                     <Text style={styles.name}>{user?.name || 'Member'} 👋</Text>
                 </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-                    <NotificationsBell />
-                    <TouchableOpacity onPress={() => navigation.navigate('Profile')}>
-                        <Avatar uri={user?.avatar} name={user?.name} size={46} />
-                    </TouchableOpacity>
-                </View>
+                <NotificationsBell />
             </View>
 
             <ScrollView
@@ -178,48 +180,99 @@ function MemberHomeView({ navigation, user, colors }) {
                 refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
             >
 
-            {/* Summary Row */}
-            <View style={styles.summaryRow}>
-                <View style={styles.summaryCard}>
+            {/* Summary Banner */}
+            <LinearGradient
+                colors={[colors.primary, colors.primaryDark]}
+                start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                style={styles.summaryBanner}
+            >
+                <View style={styles.summaryStat}>
                     <Text style={styles.summaryValue}>{groups.length}</Text>
                     <Text style={styles.summaryLabel}>My Groups</Text>
                 </View>
-                <View style={[styles.summaryCard, { borderColor: colors.primary }]}>
-                    <Text style={[styles.summaryValue, { color: colors.primary }]}>{activeGroups.length}</Text>
+                <View style={styles.summaryDivider} />
+                <View style={styles.summaryStat}>
+                    <Text style={styles.summaryValue}>{activeGroups.length}</Text>
                     <Text style={styles.summaryLabel}>Active</Text>
                 </View>
-                <View style={styles.summaryCard}>
-                    <Text style={styles.summaryValue}>₹{(totalPot / 1000).toFixed(0)}K</Text>
+                <View style={styles.summaryDivider} />
+                <View style={styles.summaryStat}>
+                    <Text style={styles.summaryValue}>
+                        {totalPot >= 100000 ? `₹${(totalPot / 100000).toFixed(1)}L` : totalPot >= 1000 ? `₹${(totalPot / 1000).toFixed(0)}K` : `₹${totalPot}`}
+                    </Text>
                     <Text style={styles.summaryLabel}>Total Pot</Text>
                 </View>
-            </View>
+            </LinearGradient>
 
-            {/* Quick Actions */}
-            <Text style={styles.sectionTitle}>Quick Actions</Text>
-            <View style={styles.actionsRow}>
-                <QuickAction icon="people" label="Groups" onPress={() => navigation.navigate('Groups')} colors={colors} />
-                <QuickAction icon="card" label="Pay EMI" onPress={() => navigation.navigate('Payments')} colors={colors} />
-                <QuickAction icon="person" label="Profile" onPress={() => navigation.navigate('Profile')} colors={colors} />
-            </View>
-
-            {/* Active Groups Horizontal Scroll */}
-            {activeGroups.length > 0 && (
+            {/* Pending Payments */}
+            {pendingPayments.length > 0 && (
                 <>
-                    <Text style={styles.sectionTitle}>Active Groups</Text>
+                    <View style={styles.sectionHeader}>
+                        <Text style={styles.sectionTitle}>Pending Payments</Text>
+                        <View style={styles.pendingBadge}>
+                            <Text style={styles.pendingBadgeText}>{pendingPayments.length}</Text>
+                        </View>
+                    </View>
                     <ScrollView
                         horizontal
+                        pagingEnabled
                         showsHorizontalScrollIndicator={false}
-                        contentContainerStyle={styles.hScroll}
+                        contentContainerStyle={styles.pendingScroll}
+                        snapToInterval={SW - 32 + 10}
+                        decelerationRate="fast"
                     >
-                        {activeGroups.map(group => (
-                            <View key={group._id} style={styles.hCardWrap}>
-                                <GroupCard
-                                    group={group}
-                                    onPress={() => navigation.navigate('GroupDetail', { groupId: group._id })}
-                                />
+                        {pendingPayments.map((payment) => (
+                            <View key={payment._id} style={styles.pendingCard}>
+                                <View style={styles.pendingCardLeft}>
+                                    <View style={[styles.pendingDot, { backgroundColor: colors.warning }]} />
+                                    <View>
+                                        <Text style={styles.pendingGroupName} numberOfLines={1}>
+                                            {payment.group?.name}
+                                        </Text>
+                                        <Text style={styles.pendingMeta}>
+                                            Month {payment.month}  ·  ₹{payment.amount?.toLocaleString()}
+                                        </Text>
+                                    </View>
+                                </View>
+                                <TouchableOpacity
+                                    style={[styles.payBtn, { backgroundColor: colors.primary }]}
+                                    onPress={() => navigation.navigate('Payment', { groupId: payment.group?._id, paymentId: payment._id })}
+                                    activeOpacity={0.8}
+                                >
+                                    <Text style={styles.payBtnText}>Pay Now</Text>
+                                </TouchableOpacity>
                             </View>
                         ))}
                     </ScrollView>
+                </>
+            )}
+
+            {/* Active Groups */}
+            {activeGroups.length > 0 && (
+                <>
+                    <View style={styles.sectionHeader}>
+                        <Text style={styles.sectionTitle}>Active Groups</Text>
+                        <Text style={styles.sectionCount}>{activeGroups.length} groups</Text>
+                    </View>
+                    <View style={styles.groupsList}>
+                        {activeGroups.slice(0, 2).map(group => (
+                            <GroupCard
+                                key={group._id}
+                                group={group}
+                                onPress={() => navigation.navigate('GroupDetail', { groupId: group._id })}
+                            />
+                        ))}
+                    </View>
+                    {activeGroups.length > 2 && (
+                        <TouchableOpacity
+                            style={[styles.viewAllBtn, { borderColor: colors.primary }]}
+                            onPress={() => navigation.navigate('Groups')}
+                            activeOpacity={0.75}
+                        >
+                            <Text style={[styles.viewAllText, { color: colors.primary }]}>View All Groups</Text>
+                            <Ionicons name="arrow-forward" size={16} color={colors.primary} />
+                        </TouchableOpacity>
+                    )}
                 </>
             )}
 
@@ -301,29 +354,79 @@ function makeStyles(colors) {
         },
         greeting:     { fontSize: 12, fontFamily: F.regular, color: colors.textSecondary },
         name:         { fontSize: 20, fontFamily: F.bold, color: colors.text, marginTop: 2 },
-        sectionTitle: { fontSize: 16, fontFamily: F.medium, color: colors.text, paddingHorizontal: 20, paddingTop: 20, paddingBottom: 12 },
+        sectionTitle: { fontSize: 16, fontFamily: F.semibold, color: colors.text },
         // Admin stat grid
         statGrid:     { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 16, paddingTop: 16, gap: 8 },
-        // Member summary
-        summaryRow:   { flexDirection: 'row', paddingHorizontal: 16, paddingTop: 16, gap: 8 },
-        summaryCard: {
-            flex: 1,
+        // Summary banner
+        summaryBanner: {
+            marginHorizontal: 16,
+            marginTop: 20,
+            borderRadius: 16,
+            paddingVertical: 18,
+            flexDirection: 'row',
+            shadowColor: colors.primary,
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.3,
+            shadowRadius: 12,
+            elevation: 6,
+        },
+        summaryStat:   { flex: 1, alignItems: 'center' },
+        summaryDivider:{ width: 1, backgroundColor: 'rgba(255,255,255,0.25)', marginVertical: 4 },
+        summaryValue:  { fontSize: 20, fontFamily: F.bold, color: '#fff', marginBottom: 3 },
+        summaryLabel:  { fontSize: 11, fontFamily: F.regular, color: 'rgba(255,255,255,0.8)' },
+        // Section header
+        sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 24, paddingBottom: 12 },
+        sectionCount:  { fontSize: 12, fontFamily: F.regular, color: colors.textSecondary },
+        // Groups list
+        groupsList: { paddingHorizontal: 16, gap: 12 },
+        // View all button
+        viewAllBtn: {
+            marginHorizontal: 16,
+            marginTop: 12,
+            borderWidth: 1.5,
+            borderRadius: 12,
+            paddingVertical: 13,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 6,
+        },
+        viewAllText: { fontSize: 14, fontFamily: F.semibold },
+        // Pending payments carousel
+        pendingBadge: {
+            backgroundColor: colors.warning,
+            borderRadius: 10, minWidth: 20, height: 20,
+            alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6,
+        },
+        pendingBadgeText: { fontSize: 11, fontFamily: F.bold, color: '#fff' },
+        pendingScroll: { paddingHorizontal: 16, gap: 10 },
+        pendingCard: {
+            width: SW - 32,
             backgroundColor: colors.background,
+            borderRadius: 14,
             borderWidth: 1,
             borderColor: colors.border,
-            borderRadius: 12,
-            padding: 14,
+            borderLeftWidth: 4,
+            borderLeftColor: colors.warning,
+            paddingHorizontal: 14,
+            paddingVertical: 13,
+            flexDirection: 'row',
             alignItems: 'center',
+            justifyContent: 'space-between',
             shadowColor: '#000',
             shadowOffset: { width: 0, height: 2 },
-            shadowOpacity: 0.08,
-            shadowRadius: 8,
-            elevation: 3,
+            shadowOpacity: 0.06,
+            shadowRadius: 6,
+            elevation: 2,
         },
-        summaryValue: { fontSize: 20, fontFamily: F.bold, color: colors.text, marginBottom: 2 },
-        summaryLabel: { fontSize: 11, fontFamily: F.regular, color: colors.textSecondary },
-        // Quick actions
-        actionsRow:   { flexDirection: 'row', paddingHorizontal: 16, gap: 8 },
+        pendingCardLeft: { flexDirection: 'row', alignItems: 'center', flex: 1, gap: 10 },
+        pendingDot: { width: 8, height: 8, borderRadius: 4 },
+        pendingGroupName: { fontSize: 14, fontFamily: F.semibold, color: colors.text, marginBottom: 3 },
+        pendingMeta: { fontSize: 12, fontFamily: F.regular, color: colors.textSecondary },
+        payBtn: {
+            borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8,
+        },
+        payBtnText: { fontSize: 13, fontFamily: F.semibold, color: '#fff' },
         // Pending alert
         pendingAlert: {
             marginHorizontal: 16,
@@ -362,9 +465,6 @@ function makeStyles(colors) {
         progressBar: { height: 4, backgroundColor: colors.backgroundTertiary, borderRadius: 2, overflow: 'hidden', marginBottom: 6 },
         progressFill:{ height: 4, backgroundColor: colors.primary, borderRadius: 2 },
         healthSub:   { fontSize: 11, fontFamily: F.regular, color: colors.textSecondary },
-        // Horizontal group scroll
-        hScroll:     { paddingLeft: 16, paddingRight: 8, paddingBottom: 4 },
-        hCardWrap:   { width: 280, marginRight: 12 },
         // Empty state
         emptyBox: {
             margin: 16,

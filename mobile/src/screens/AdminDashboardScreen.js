@@ -1,204 +1,204 @@
 import React, { useMemo, useState, useCallback } from 'react';
 import {
-  View,
-  Text,
-  ScrollView,
-  StyleSheet,
-  TouchableOpacity,
-  RefreshControl,
-  ActivityIndicator,
-  Alert,
-  Dimensions,
+  View, Text, ScrollView, StyleSheet, TouchableOpacity,
+  RefreshControl, ActivityIndicator, Modal, FlatList, Dimensions,
 } from 'react-native';
-import { BarChart } from 'react-native-chart-kit';
 import Svg, { Circle, Text as SvgText } from 'react-native-svg';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
-import { getAdminDashboard } from '../services/api';
+import { getAdminDashboard, getGroups, getAdminPaymentStats } from '../services/api';
 import { F } from '../theme';
 import NotificationsBell from '../components/NotificationsBell';
 
 const W = Dimensions.get('window').width;
-// card: marginHorizontal 12 each side + card padding 12 each side = 48 total
-const CHART_W = W - 48;
 
-function DonutChart({ verified, pending, failed, textColor, trackColor }) {
-  const SIZE = 130;
-  const cx = SIZE / 2;
-  const cy = SIZE / 2;
-  const R = 46;
-  const CIRC = 2 * Math.PI * R;
-  const SW = 15;
+// ── Donut chart ──────────────────────────────────────────────────────────────
 
+function DonutChart({ verifiedPct, pendingPct, textColor, trackColor }) {
+  const SIZE = 120, cx = 60, cy = 60, R = 44, CIRC = 2 * Math.PI * R, SW = 14;
+  const failedPct = Math.max(0, 100 - verifiedPct - pendingPct);
   const segments = [
-    { pct: verified, color: '#10B981' },
-    { pct: pending, color: '#F59E0B' },
-    { pct: failed, color: '#EF4444' },
+    { pct: verifiedPct, color: '#10B981' },
+    { pct: pendingPct,  color: '#F59E0B' },
+    { pct: failedPct,   color: '#EF4444' },
   ];
   let cum = 0;
-  const arcs = segments.map((s) => {
-    const dash = (s.pct / 100) * CIRC;
+  const arcs = segments.map(s => {
+    const dash   = (s.pct / 100) * CIRC;
     const offset = -(cum / 100) * CIRC;
     cum += s.pct;
     return { ...s, dash, offset };
   });
-
   return (
     <Svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`}>
-      <Circle
-        cx={cx}
-        cy={cy}
-        r={R}
-        fill="none"
-        stroke={trackColor}
-        strokeWidth={SW}
-      />
-      {arcs.map((a, i) =>
-        a.pct > 0 ? (
-          <Circle
-            key={i}
-            cx={cx}
-            cy={cy}
-            r={R}
-            fill="none"
-            stroke={a.color}
-            strokeWidth={SW}
-            strokeDasharray={`${a.dash} ${CIRC}`}
-            strokeDashoffset={a.offset}
-            transform={`rotate(-90 ${cx} ${cy})`}
-          />
-        ) : null,
-      )}
-      <SvgText
-        x={cx}
-        y={cy + 6}
-        textAnchor="middle"
-        fontSize="16"
-        fontWeight="bold"
-        fill={textColor}
-      >
-        {verified}%
+      <Circle cx={cx} cy={cy} r={R} fill="none" stroke={trackColor} strokeWidth={SW} />
+      {arcs.map((a, i) => a.pct > 0 ? (
+        <Circle key={i} cx={cx} cy={cy} r={R} fill="none"
+          stroke={a.color} strokeWidth={SW}
+          strokeDasharray={`${a.dash} ${CIRC}`}
+          strokeDashoffset={a.offset}
+          transform={`rotate(-90 ${cx} ${cy})`}
+        />
+      ) : null)}
+      <SvgText x={cx} y={cy + 6} textAnchor="middle" fontSize="15" fontWeight="bold" fill={textColor}>
+        {verifiedPct}%
       </SvgText>
     </Svg>
   );
 }
 
-export default function AdminDashboardScreen({ navigation }) {
-  const { user } = useAuth();
-  const { colors } = useTheme();
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const now = new Date();
-  // getUTCHours + timezone offset gives reliable 24-hour local time
-  // regardless of the device's 12/24-hour display setting
-  const hour = Math.floor(
-    ((now.getTime() / 36e5) - (now.getTimezoneOffset() / 60) % 24 + 24) % 24
-  );
-  const greeting =
-    hour >= 5 && hour < 12 ? 'Good morning'
-    : hour >= 12 && hour < 17 ? 'Good afternoon'
-    : 'Good evening';
+// ── Dropdown ─────────────────────────────────────────────────────────────────
 
-  const loadData = async () => {
+function Dropdown({ label, value, options, onSelect, colors, styles, icon }) {
+  const [open, setOpen] = useState(false);
+  const selected = options.find(o => o.value === value);
+  const isFiltered = value !== 'all';
+  return (
+    <>
+      <TouchableOpacity
+        style={[styles.dropBtn, isFiltered && { borderColor: colors.primary, backgroundColor: colors.primaryLight }]}
+        onPress={() => setOpen(true)}
+        activeOpacity={0.75}
+      >
+        <Ionicons name={icon} size={14} color={isFiltered ? colors.primary : colors.textSecondary} />
+        <Text style={[styles.dropValue, isFiltered && { color: colors.primary }]} numberOfLines={1}>
+          {selected?.label || label}
+        </Text>
+        <Ionicons name="chevron-down" size={12} color={isFiltered ? colors.primary : colors.textTertiary} />
+      </TouchableOpacity>
+      <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setOpen(false)}>
+          <View style={styles.modalSheet}>
+            {/* Drag handle */}
+            <View style={styles.modalHandle} />
+            {/* Header */}
+            <View style={styles.modalHeader}>
+              <View style={[styles.modalHeaderIcon, { backgroundColor: colors.primaryLight }]}>
+                <Ionicons name={icon} size={16} color={colors.primary} />
+              </View>
+              <Text style={styles.modalTitle}>Select {label}</Text>
+            </View>
+            <FlatList
+              data={options}
+              keyExtractor={o => String(o.value)}
+              contentContainerStyle={styles.modalList}
+              renderItem={({ item }) => {
+                const isActive = item.value === value;
+                return (
+                  <TouchableOpacity
+                    style={[styles.modalOption, isActive && { backgroundColor: colors.primaryLight, borderColor: colors.primary }]}
+                    onPress={() => { onSelect(item.value); setOpen(false); }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.modalOptionText, isActive && { color: colors.primary, fontFamily: F.semibold }]}>
+                      {item.label}
+                    </Text>
+                    {isActive && (
+                      <View style={[styles.modalCheck, { backgroundColor: colors.primary }]}>
+                        <Ionicons name="checkmark" size={11} color="#fff" />
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                );
+              }}
+            />
+          </View>
+        </TouchableOpacity>
+      </Modal>
+    </>
+  );
+}
+
+// ── Screen ───────────────────────────────────────────────────────────────────
+
+export default function AdminDashboardScreen({ navigation }) {
+  const { colors } = useTheme();
+
+  const [dashData, setDashData]           = useState(null);
+  const [groups, setGroups]               = useState([]);
+  const [filteredStats, setFilteredStats] = useState(null);
+  const [loading, setLoading]             = useState(true);
+  const [statsLoading, setStatsLoading]   = useState(false);
+  const [refreshing, setRefreshing]       = useState(false);
+  const [selectedGroup, setSelectedGroup] = useState('all');
+  const [selectedMonth, setSelectedMonth] = useState('all');
+
+  const now  = new Date();
+  const hour = Math.floor(((now.getTime() / 36e5) - (now.getTimezoneOffset() / 60) % 24 + 24) % 24);
+  const greeting = hour >= 5 && hour < 12 ? 'Good morning' : hour >= 12 && hour < 17 ? 'Good afternoon' : 'Good evening';
+
+  const loadBase = async () => {
     try {
-      const dashRes = await getAdminDashboard();
-      setData(dashRes.data);
+      const [dashRes, groupsRes] = await Promise.all([getAdminDashboard(), getGroups()]);
+      setDashData(dashRes.data);
+      setGroups(groupsRes.data.groups || []);
     } catch (err) {
-      console.log('Dashboard error:', err.message);
+      console.log('Dashboard load error:', err.message);
     } finally {
       setLoading(false);
     }
   };
 
-  useFocusEffect(
-    useCallback(() => {
-      loadData();
-    }, []),
-  );
+  const loadStats = useCallback(async (groupId, month) => {
+    setStatsLoading(true);
+    try {
+      const res = await getAdminPaymentStats(
+        groupId !== 'all' ? groupId : null,
+        month   !== 'all' ? month   : null,
+      );
+      setFilteredStats(res.data.data);
+    } catch (err) {
+      console.log('Stats load error:', err.message);
+    } finally {
+      setStatsLoading(false);
+    }
+  }, []);
+
+  useFocusEffect(useCallback(() => { loadBase(); }, []));
+  useFocusEffect(useCallback(() => { loadStats(selectedGroup, selectedMonth); }, [selectedGroup, selectedMonth]));
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadData();
+    await Promise.all([loadBase(), loadStats(selectedGroup, selectedMonth)]);
     setRefreshing(false);
   };
 
-  const stats = data?.stats || {};
-  const recentPayments = data?.recentPayments || [];
+  const onGroupChange = (val) => { setSelectedGroup(val); setSelectedMonth('all'); };
 
-  // Build 8-day revenue trend from recentPayments
-  const barData = useMemo(() => {
-    const days = Array.from({ length: 8 }, (_, i) => {
-      const d = new Date();
-      d.setDate(d.getDate() - (7 - i));
-      return d.toDateString();
-    });
-    const vals = days.map((day) =>
-      recentPayments
-        .filter(
-          (p) =>
-            p.status === 'verified' &&
-            new Date(p.createdAt).toDateString() === day,
-        )
-        .reduce((s, p) => s + (p.amount || 0), 0),
-    );
-    // Use fallback demo data if no real data yet
-    return vals.some((v) => v > 0)
-      ? vals
-      : [400, 700, 300, 1100, 800, 500, 1400, 900];
-  }, [recentPayments]);
-
-  // Payment status percentages
-  const total = stats.totalPayments || 0;
-  const verifiedPct =
-    total > 0 ? Math.round((stats.verifiedCount / total) * 100) : 65;
-  const pendingPct =
-    total > 0 ? Math.round((stats.pendingCount / total) * 100) : 25;
-  const failedPct = Math.max(0, 100 - verifiedPct - pendingPct) || 10;
-
-  const statCards = [
-    { icon: 'people', label: 'Groups', value: stats.totalGroups ?? 0 },
-    { icon: 'person', label: 'Members', value: stats.totalUsers ?? 0 },
-    { icon: 'time', label: 'Pending', value: stats.pendingCount ?? 0 },
-    {
-      icon: 'wallet',
-      label: 'Collected',
-      value: `₹${Math.round((stats.verifiedAmount || 0) / 1000)}K`,
-    },
+  const groupOptions = [
+    { label: 'All Groups', value: 'all' },
+    ...groups.map(g => ({ label: g.name, value: g._id })),
+  ];
+  const activeGroup = groups.find(g => g._id === selectedGroup);
+  const maxMonth    = activeGroup ? (activeGroup.totalMonths || 12) : 24;
+  const monthOptions = [
+    { label: 'All Months', value: 'all' },
+    ...Array.from({ length: maxMonth }, (_, i) => ({ label: `Month ${i + 1}`, value: i + 1 })),
   ];
 
-  const chartConfig = useMemo(
-    () => ({
-      backgroundColor: colors.backgroundSecondary,
-      backgroundGradientFrom: colors.backgroundSecondary,
-      backgroundGradientTo: colors.backgroundSecondary,
-      color: () => colors.primary,
-      barPercentage: 0.55,
-      decimalPlaces: 0,
-      propsForLabels: { fontSize: '0' },
-    }),
-    [colors],
-  );
-
+  const stats = dashData?.stats || {};
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
+  // Donut percentages from filtered stats
+  const totalPayments = (filteredStats?.verifiedCount || 0) + (filteredStats?.pendingCount || 0);
+  const verifiedPct   = totalPayments > 0 ? Math.round((filteredStats.verifiedCount / totalPayments) * 100) : 0;
+  const pendingPct    = totalPayments > 0 ? Math.round((filteredStats.pendingCount  / totalPayments) * 100) : 0;
+
+  const fmt = (val) => val >= 100000 ? `₹${(val / 100000).toFixed(1)}L` : val >= 1000 ? `₹${(val / 1000).toFixed(1)}K` : `₹${val}`;
+
   if (loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator color={colors.primary} size="large" />
-      </View>
-    );
+    return <View style={styles.center}><ActivityIndicator color={colors.primary} size="large" /></View>;
   }
 
   return (
     <View style={styles.root}>
-      {/* ── Header ── */}
+      {/* Header */}
       <View style={styles.header}>
         <View>
           <Text style={styles.greeting}>{greeting}, Admin</Text>
-          <Text style={styles.headerTitle}>DASHBOARD</Text>
+          <Text style={styles.headerTitle}>Dashboard</Text>
         </View>
         <NotificationsBell />
       </View>
@@ -206,199 +206,236 @@ export default function AdminDashboardScreen({ navigation }) {
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.content}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={colors.primary}
-          />
-        }
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── 2×2 Stat Grid ── */}
-        <View style={styles.statGrid}>
-          {statCards.map((card, i) => (
-            <View key={i} style={styles.statCard}>
-              <View style={styles.statTop}>
-                <View style={styles.iconWrap}>
-                  <Ionicons name={card.icon} size={16} color="#fff" />
-                </View>
-                <Text style={styles.statLabel}>{card.label}</Text>
-              </View>
-              <Text style={styles.statValue}>{card.value}</Text>
+        {/* ── Groups & Members ── */}
+        <View style={styles.summaryRow}>
+          <LinearGradient
+            colors={[colors.primary, colors.primaryDark]}
+            start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+            style={styles.summaryCard}
+          >
+            <View style={styles.summaryCardTop}>
+              <Text style={styles.summaryCardLabel}>GROUPS</Text>
+              <Ionicons name="people" size={24} color="rgba(255,255,255,0.18)" />
             </View>
-          ))}
+            <Text style={styles.summaryCardValue}>{stats.totalGroups ?? 0}</Text>
+            <View style={styles.summaryCardBottom}>
+              <View style={styles.summaryCardDot} />
+              <Text style={styles.summaryCardSub}>{stats.activeGroups ?? 0} active</Text>
+            </View>
+          </LinearGradient>
+
+          <LinearGradient
+            colors={['#1e293b', '#334155']}
+            start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+            style={styles.summaryCard}
+          >
+            <View style={styles.summaryCardTop}>
+              <Text style={styles.summaryCardLabel}>MEMBERS</Text>
+              <Ionicons name="person" size={24} color="rgba(255,255,255,0.18)" />
+            </View>
+            <Text style={styles.summaryCardValue}>{stats.totalUsers ?? 0}</Text>
+            <View style={styles.summaryCardBottom}>
+              <View style={[styles.summaryCardDot, { backgroundColor: '#60a5fa' }]} />
+              <Text style={styles.summaryCardSub}>registered</Text>
+            </View>
+          </LinearGradient>
         </View>
 
-        {/* ── Stats & Analytics ── */}
-        <Text style={styles.sectionTitle}>STATS & ANALYTICS</Text>
-
-        {/* Revenue Trend */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Revenue Trend (30 days)</Text>
-          <BarChart
-            data={{
-              labels: ['', '', '', '', '', '', '', ''],
-              datasets: [{ data: barData }],
-            }}
-            width={CHART_W}
-            height={110}
-            chartConfig={chartConfig}
-            withHorizontalLabels={false}
-            withVerticalLabels={false}
-            showBarTops={false}
-            showValuesOnTopOfBars={false}
-            fromZero
-            style={styles.barChart}
-          />
-        </View>
-
-        {/* Payment Status */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Payment Status</Text>
-          <View style={styles.pieRow}>
-            <DonutChart
-              verified={verifiedPct}
-              pending={pendingPct}
-              failed={failedPct}
-              textColor={colors.text}
-              trackColor={colors.backgroundTertiary}
-            />
-            <View style={styles.legend}>
-              {[
-                { label: 'Verified', pct: verifiedPct, color: '#10B981' },
-                { label: 'Pending', pct: pendingPct, color: '#F59E0B' },
-                { label: 'Failed', pct: failedPct, color: '#EF4444' },
-              ].map((item) => (
-                <View key={item.label} style={styles.legendRow}>
-                  <View style={[styles.dot, { backgroundColor: item.color }]} />
-                  <Text style={styles.legendLabel}>{item.label}</Text>
-                  <Text style={styles.legendPct}>{item.pct}%</Text>
-                </View>
-              ))}
-            </View>
+        {/* ── Filter Dropdowns ── */}
+        <Text style={styles.sectionTitle}>PAYMENT OVERVIEW</Text>
+        <View style={styles.filterRow}>
+          <View style={styles.dropWrap}>
+            <Dropdown label="Group" value={selectedGroup} options={groupOptions} onSelect={onGroupChange} colors={colors} styles={styles} icon="people" />
+          </View>
+          <View style={styles.dropWrap}>
+            <Dropdown label="Month" value={selectedMonth} options={monthOptions} onSelect={val => setSelectedMonth(val)} colors={colors} styles={styles} icon="calendar" />
           </View>
         </View>
+
+        {/* ── 3 Stat Cards in one row ── */}
+        {statsLoading ? (
+          <ActivityIndicator color={colors.primary} style={{ marginTop: 20 }} />
+        ) : filteredStats ? (
+          <>
+            <View style={styles.statCard}>
+              {[
+                { label: 'Collected', amount: filteredStats.verifiedAmount, count: filteredStats.verifiedCount, color: colors.success, bg: colors.successLight },
+                { label: 'Pending',   amount: filteredStats.pendingAmount,  count: filteredStats.pendingCount,  color: colors.warning, bg: colors.warningLight },
+                { label: 'Total EMI', amount: filteredStats.verifiedAmount + filteredStats.pendingAmount, count: totalPayments, color: colors.primary, bg: colors.primaryLight },
+              ].map((s, i) => (
+                <React.Fragment key={s.label}>
+                  {i > 0 && <View style={styles.statVDivider} />}
+                  <View style={styles.statSection}>
+                    {/* Colored top accent bar */}
+                    <View style={[styles.statAccent, { backgroundColor: s.color }]} />
+                    {/* Count badge */}
+                    <View style={[styles.statBadge, { backgroundColor: s.bg }]}>
+                      <Text style={[styles.statBadgeText, { color: s.color }]}>{s.count}</Text>
+                    </View>
+                    {/* Amount */}
+                    <Text style={[styles.statAmount, { color: s.color }]}>{fmt(s.amount)}</Text>
+                    {/* Label */}
+                    <Text style={styles.statLabel}>{s.label}</Text>
+                  </View>
+                </React.Fragment>
+              ))}
+            </View>
+
+            {/* ── Payment Status Donut ── */}
+            {totalPayments > 0 && (
+              <>
+                <Text style={styles.sectionTitle}>PAYMENT STATUS</Text>
+                <View style={styles.donutCard}>
+                  <DonutChart
+                    verifiedPct={verifiedPct}
+                    pendingPct={pendingPct}
+                    textColor={colors.text}
+                    trackColor={colors.backgroundTertiary}
+                  />
+                  <View style={styles.legend}>
+                    {[
+                      { label: 'Verified', pct: verifiedPct, color: '#10B981', count: filteredStats.verifiedCount },
+                      { label: 'Pending',  pct: pendingPct,  color: '#F59E0B', count: filteredStats.pendingCount  },
+                      { label: 'Other',    pct: Math.max(0, 100 - verifiedPct - pendingPct), color: '#EF4444', count: 0 },
+                    ].map(item => (
+                      <View key={item.label} style={styles.legendRow}>
+                        <View style={[styles.legendDot, { backgroundColor: item.color }]} />
+                        <Text style={styles.legendLabel}>{item.label}</Text>
+                        <Text style={styles.legendPct}>{item.pct}%</Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              </>
+            )}
+          </>
+        ) : null}
+
+        <View style={{ height: 30 }} />
       </ScrollView>
     </View>
   );
 }
 
 function makeStyles(colors) {
-  const STAT_W = (W - 12 * 2 - 8) / 2;
+  const STAT_W = (W - 32 - 16) / 3;
   return StyleSheet.create({
-    root: { flex: 1, backgroundColor: colors.background },
-    center: {
-      flex: 1,
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: colors.background,
-    },
-    scroll: { flex: 1 },
-    content: { paddingBottom: 20 },
+    root:    { flex: 1, backgroundColor: colors.backgroundSecondary },
+    center:  { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.backgroundSecondary },
+    scroll:  { flex: 1 },
+    content: { paddingBottom: 30 },
 
-    // Header — compact 40px content area
     header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingTop: 56,
-      paddingBottom: 12,
-      paddingHorizontal: 16,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+      paddingTop: 56, paddingBottom: 12, paddingHorizontal: 16,
+      borderBottomWidth: 1, borderBottomColor: colors.border,
       backgroundColor: colors.background,
-      zIndex: 10,
     },
-    greeting: {
-      fontSize: 12,
-      fontFamily: F.regular,
-      color: colors.textSecondary,
-    },
-    headerTitle: { fontSize: 20, fontFamily: F.bold, color: colors.text },
+    greeting:    { fontSize: 12, fontFamily: F.regular, color: colors.textSecondary },
+    headerTitle: { fontSize: 22, fontFamily: F.bold, color: colors.text },
 
-    // Stat grid
-    statGrid: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: 8,
-      paddingHorizontal: 12,
-      paddingTop: 12,
+    // Summary
+    summaryRow: { flexDirection: 'row', paddingHorizontal: 16, paddingTop: 14, gap: 10 },
+    summaryCard: {
+      flex: 1, borderRadius: 14, padding: 12,
+      shadowColor: '#000', shadowOffset: { width: 0, height: 3 },
+      shadowOpacity: 0.12, shadowRadius: 8, elevation: 4,
     },
-    statCard: {
-      width: STAT_W,
-      height: 80,
-      backgroundColor: colors.primary,
-      borderRadius: 12,
-      padding: 10,
-      justifyContent: 'space-between',
+    summaryCardTop: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6,
     },
-    statTop: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 6,
-    },
-    iconWrap: {
-      width: 28,
-      height: 28,
-      borderRadius: 7,
-      backgroundColor: 'rgba(255,255,255,0.25)',
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    statValue: {
-      fontSize: 20,
-      fontFamily: F.bold,
-      color: '#fff',
-      lineHeight: 24,
-    },
-    statLabel: {
-      fontSize: 11,
-      fontFamily: F.medium,
-      color: 'rgba(255,255,255,0.85)',
-      flexShrink: 1,
-    },
+    summaryCardLabel: { fontSize: 10, fontFamily: F.bold, color: 'rgba(255,255,255,0.65)', letterSpacing: 1 },
+    summaryCardValue: { fontSize: 28, fontFamily: F.bold, color: '#fff', marginBottom: 6 },
+    summaryCardBottom: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+    summaryCardDot:    { width: 6, height: 6, borderRadius: 3, backgroundColor: '#4ade80' },
+    summaryCardSub:    { fontSize: 11, fontFamily: F.medium, color: 'rgba(255,255,255,0.7)' },
 
-    // Section title
     sectionTitle: {
-      fontSize: 11,
-      fontFamily: F.bold,
-      color: colors.textTertiary,
-      letterSpacing: 0.8,
-      paddingHorizontal: 12,
-      paddingTop: 14,
-      paddingBottom: 8,
+      fontSize: 11, fontFamily: F.bold, color: colors.textTertiary,
+      letterSpacing: 0.8, paddingHorizontal: 16, paddingTop: 20, paddingBottom: 10,
     },
 
-    // Cards
-    card: {
-      backgroundColor: colors.backgroundSecondary,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 12,
-      marginHorizontal: 12,
-      marginBottom: 8,
-      padding: 12,
+    // Filters
+    filterRow: { flexDirection: 'row', paddingHorizontal: 16, gap: 8 },
+    dropWrap:  { flex: 1 },
+    dropBtn: {
+      flexDirection: 'row', alignItems: 'center', gap: 7,
+      backgroundColor: colors.background, borderWidth: 1.5, borderColor: colors.border,
+      borderRadius: 20, paddingHorizontal: 12, paddingVertical: 8,
     },
-    cardTitle: {
-      fontSize: 12,
-      fontFamily: F.semibold,
-      color: colors.text,
-      marginBottom: 8,
-    },
-    barChart: { borderRadius: 8, marginLeft: -8 },
+    dropValue: { flex: 1, fontSize: 13, fontFamily: F.medium, color: colors.text },
 
-    // Donut + legend
-    pieRow: { flexDirection: 'row', alignItems: 'center' },
-    legend: { flex: 1, paddingLeft: 8, gap: 12 },
-    legendRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-    dot: { width: 8, height: 8, borderRadius: 4 },
-    legendLabel: {
-      flex: 1,
-      fontSize: 12,
-      fontFamily: F.regular,
-      color: colors.textSecondary,
+    // Modal
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+    modalSheet: {
+      backgroundColor: colors.background,
+      borderTopLeftRadius: 24, borderTopRightRadius: 24,
+      paddingBottom: 36, maxHeight: '65%',
     },
-    legendPct: { fontSize: 12, fontFamily: F.semibold, color: colors.text },
+    modalHandle: {
+      width: 36, height: 4, borderRadius: 2,
+      backgroundColor: colors.border,
+      alignSelf: 'center', marginTop: 10, marginBottom: 16,
+    },
+    modalHeader: {
+      flexDirection: 'row', alignItems: 'center', gap: 10,
+      paddingHorizontal: 16, paddingBottom: 14,
+      borderBottomWidth: 1, borderBottomColor: colors.border,
+      marginBottom: 8,
+    },
+    modalHeaderIcon: {
+      width: 32, height: 32, borderRadius: 9,
+      alignItems: 'center', justifyContent: 'center',
+    },
+    modalTitle: { fontSize: 15, fontFamily: F.semibold, color: colors.text },
+    modalList:  { paddingHorizontal: 12, paddingTop: 4, gap: 6 },
+    modalOption: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+      paddingHorizontal: 14, paddingVertical: 13,
+      borderRadius: 12, borderWidth: 1, borderColor: 'transparent',
+    },
+    modalOptionText: { fontSize: 14, fontFamily: F.regular, color: colors.text },
+    modalCheck: {
+      width: 20, height: 20, borderRadius: 10,
+      alignItems: 'center', justifyContent: 'center',
+    },
+
+    // Single stat card with vertical dividers
+    statCard: {
+      flexDirection: 'row',
+      marginHorizontal: 16, marginTop: 12,
+      backgroundColor: colors.background,
+      borderRadius: 20, borderWidth: 1, borderColor: colors.border,
+      shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.08, shadowRadius: 12, elevation: 4,
+      overflow: 'hidden',
+    },
+    statSection:  { flex: 1, alignItems: 'center', paddingBottom: 16, paddingHorizontal: 6 },
+    statVDivider: { width: 1, backgroundColor: colors.border, marginVertical: 0 },
+    statAccent:   { width: '100%', height: 3, borderRadius: 0, marginBottom: 12 },
+    statBadge: {
+      borderRadius: 20, paddingHorizontal: 10, paddingVertical: 3, marginBottom: 10,
+    },
+    statBadgeText: { fontSize: 11, fontFamily: F.bold },
+    statAmount:    { fontSize: 18, fontFamily: F.bold, marginBottom: 4 },
+    statLabel:     { fontSize: 11, fontFamily: F.medium, color: colors.textSecondary },
+
+    // Donut card
+    donutCard: {
+      marginHorizontal: 16, marginTop: 2,
+      backgroundColor: colors.background, borderRadius: 14,
+      borderWidth: 1, borderColor: colors.border,
+      padding: 16, flexDirection: 'row', alignItems: 'center',
+      shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.06, shadowRadius: 8, elevation: 2,
+    },
+    legend:     { flex: 1, paddingLeft: 16, gap: 14 },
+    legendRow:  { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    legendDot:  { width: 8, height: 8, borderRadius: 4 },
+    legendLabel:{ flex: 1, fontSize: 13, fontFamily: F.regular, color: colors.textSecondary },
+    legendPct:  { fontSize: 13, fontFamily: F.semibold, color: colors.text },
   });
 }

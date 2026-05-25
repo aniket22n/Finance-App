@@ -87,6 +87,39 @@ router.get('/dashboard', auth, adminOnly, async (req, res) => {
     }
 });
 
+// GET /api/admin/payments/stats?groupId=&month= — Filtered payment stats
+router.get('/payments/stats', auth, adminOnly, async (req, res) => {
+    try {
+        const { groupId, month } = req.query;
+        const filter = {};
+        if (groupId) filter.group = mongoose.Types.ObjectId.createFromHexString(groupId);
+        if (month)   filter.month = parseInt(month);
+
+        const [verified, pending] = await Promise.all([
+            Payment.aggregate([
+                { $match: { ...filter, status: 'verified' } },
+                { $group: { _id: null, total: { $sum: '$amount' }, count: { $sum: 1 } } },
+            ]),
+            Payment.aggregate([
+                { $match: { ...filter, status: 'pending' } },
+                { $group: { _id: null, total: { $sum: '$amount' }, count: { $sum: 1 } } },
+            ]),
+        ]);
+
+        res.json({
+            success: true,
+            data: {
+                verifiedAmount: verified[0]?.total || 0,
+                verifiedCount:  verified[0]?.count || 0,
+                pendingAmount:  pending[0]?.total  || 0,
+                pendingCount:   pending[0]?.count  || 0,
+            },
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
 // GET /api/admin/users — All users
 router.get('/users', auth, adminOnly, async (req, res) => {
     try {
