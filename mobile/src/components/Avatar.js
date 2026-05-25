@@ -1,7 +1,12 @@
 import React from 'react';
 import { View, Text, Image, StyleSheet } from 'react-native';
+import { useTheme } from '../context/ThemeContext';
+import { F } from '../theme';
 
 export default function Avatar({ uri, name, size = 60, style }) {
+    const { colors } = useTheme();
+    const styles = makeStyles(colors);
+
     const initials = name
         ? name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
         : '?';
@@ -22,20 +27,22 @@ export default function Avatar({ uri, name, size = 60, style }) {
     );
 }
 
-const styles = StyleSheet.create({
-    image: {
-        borderWidth: 2,
-        borderColor: '#e94560',
-    },
-    placeholder: {
-        backgroundColor: '#16213e',
-        borderWidth: 2,
-        borderColor: '#e94560',
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    initials: {
-        color: '#e94560',
-        fontWeight: '700',
-    },
-});
+function makeStyles(colors) {
+    return StyleSheet.create({
+        image: {
+            borderWidth: 2,
+            borderColor: colors.primary,
+        },
+        placeholder: {
+            backgroundColor: colors.primaryLight,
+            borderWidth: 2,
+            borderColor: colors.primary,
+            alignItems: 'center',
+            justifyContent: 'center',
+        },
+        initials: {
+            color: colors.primary,
+            fontFamily: F.bold,
+        },
+    });
+}

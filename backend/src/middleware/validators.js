@@ -49,9 +49,31 @@ const enumValue = (field, allowedValues) => body(field)
     .isIn(allowedValues)
     .withMessage(`${field} must be one of: ${allowedValues.join(', ')}`);
 
+// Password (min 6 chars)
+const password = (field = 'password') => body(field)
+    .isString()
+    .isLength({ min: 6, max: 128 })
+    .withMessage('Password must be at least 6 characters');
+
+// PIN (exactly 4 digits)
+const pin = (field = 'pin') => body(field)
+    .isString()
+    .matches(/^\d{4}$/)
+    .withMessage('PIN must be exactly 4 digits');
+
 // ─── Auth Validators ───
-const sendOtpValidations = [phone()];
-const verifyOtpValidations = [phone(), otp()];
+const sendOtpValidations       = [phone()];
+const verifyOtpValidations     = [phone(), otp()];
+const loginPasswordValidations = [phone(), password()];
+const signupValidations        = [phone(), otp(), password(), optionalString('name'), optionalString('firstName'), optionalString('lastName')];
+const resetPasswordValidations = [phone(), otp(), password('newPassword')];
+
+// ─── PIN Auth Validators ───
+const checkUserTypeValidations = [phone()];
+const loginWithPinValidations  = [phone(), pin()];
+const signupWithPinValidations = [phone(), otp(), pin(), optionalString('name'), optionalString('firstName'), optionalString('lastName')];
+const setPinValidations        = [pin()];
+const resetPinValidations      = [phone(), otp(), pin()];
 
 // ─── Payment Validators ───
 const initiatePaymentValidations = [
@@ -71,8 +93,8 @@ const createGroupValidations = [
     body('emiAmount').isFloat({ min: 100 }).withMessage('EMI amount must be at least 100'),
     body('reducedEmi').isFloat({ min: 0 }).withMessage('Reduced EMI must be 0 or more'),
     body('totalMonths').isInt({ min: 1, max: 120 }).withMessage('Total months must be 1-120'),
-    body('minMembers').optional().isInt({ min: 20, max: 100 }).withMessage('Min members 20-100'),
-    body('maxMembers').optional().isInt({ min: 20, max: 100 }).withMessage('Max members 20-100'),
+    body('minMembers').optional().isInt({ min: 2, max: 100 }).withMessage('Min members 2-100'),
+    body('maxMembers').optional().isInt({ min: 2, max: 100 }).withMessage('Max members 2-100'),
 ];
 
 const updateGroupValidations = [
@@ -106,8 +128,12 @@ module.exports = {
     validate,
     // Common
     objectId, phone, otp, positiveInt, positiveNumber, requiredString, optionalString, enumValue,
-    // Auth
+    // Auth (password)
     sendOtpValidations, verifyOtpValidations,
+    loginPasswordValidations, signupValidations, resetPasswordValidations,
+    // Auth (PIN)
+    checkUserTypeValidations, loginWithPinValidations, signupWithPinValidations,
+    setPinValidations, resetPinValidations,
     // Payments
     initiatePaymentValidations,
     // Groups

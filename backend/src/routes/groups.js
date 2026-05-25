@@ -10,15 +10,19 @@ const router = express.Router();
 // POST /api/groups — Create group (admin only)
 router.post('/', auth, adminOnly, createGroupValidations, validate, async (req, res) => {
     try {
-        const { name, description, potAmount, emiAmount, reducedEmi, minMembers, maxMembers, totalMonths } = req.body;
+        const { name, description, potAmount, emiAmount, reducedEmi, minMembers, maxMembers, totalMonths, dueDay, reminderDaysBefore } = req.body;
 
+        // If admin only specifies maxMembers, derive sensible defaults so a small group
+        // (e.g. 5 members) doesn't fail validation against legacy 20-member assumptions.
+        const max = maxMembers || 100;
+        const min = minMembers || max;          // default: same as max (single fixed size)
         const config = {
             potAmount: potAmount || 0,
             emiAmount: emiAmount || 0,
             reducedEmi: reducedEmi || 0,
-            minMembers: minMembers || 20,
-            maxMembers: maxMembers || 100,
-            totalMonths: totalMonths || minMembers || 20,
+            minMembers: min,
+            maxMembers: max,
+            totalMonths: totalMonths || max,    // default: one cycle per member
         };
 
         const validation = validateGroupConfig(config);
@@ -30,6 +34,8 @@ router.post('/', auth, adminOnly, createGroupValidations, validate, async (req, 
             name,
             description,
             ...config,
+            ...(dueDay              ? { dueDay }              : {}),
+            ...(reminderDaysBefore !== undefined ? { reminderDaysBefore } : {}),
             createdBy: req.user._id,
         });
 
@@ -86,23 +92,36 @@ router.get('/:id', auth, async (req, res) => {
 // PUT /api/groups/:id — Update group config (admin only)
 router.put('/:id', auth, adminOnly, updateGroupValidations, validate, async (req, res) => {
     try {
-        const { name, description, potAmount, emiAmount, reducedEmi, minMembers, maxMembers, totalMonths, status } = req.body;
+        const existing = await Group.findById(req.params.id);
+        if (!existing) return res.status(404).json({ error: 'Group not found' });
+
+        const { name, description, potAmount, emiAmount, reducedEmi, minMembers, maxMembers, totalMonths, status, dueDay, reminderDaysBefore } = req.body;
         const updates = {};
 
+        // Cosmetic / scheduling fields — always editable.
         if (name) updates.name = name;
         if (description !== undefined) updates.description = description;
-        if (potAmount) updates.potAmount = potAmount;
-        if (emiAmount) updates.emiAmount = emiAmount;
-        if (reducedEmi !== undefined) updates.reducedEmi = reducedEmi;
-        if (minMembers) updates.minMembers = minMembers;
-        if (maxMembers) updates.maxMembers = maxMembers;
-        if (totalMonths) updates.totalMonths = totalMonths;
+        if (dueDay) updates.dueDay = dueDay;
+        if (reminderDaysBefore !== undefined) updates.reminderDaysBefore = reminderDaysBefore;
         if (status) updates.status = status;
+
+        // Financial / structural fields — once the first draw has executed, changing
+        // these would invalidate already-collected payments and existing cycles.
+        const drawStarted = (existing.currentMonth || 0) > 0;
+        const structural = { potAmount, emiAmount, reducedEmi, minMembers, maxMembers, totalMonths };
+        const structuralChanged = Object.entries(structural).filter(([_, v]) => v !== undefined && v !== null && v !== '');
+
+        if (drawStarted && structuralChanged.length > 0) {
+            return res.status(400).json({
+                error: 'Cannot change pot/EMI/member-count after the first draw. Only name, due day, and reminder schedule are editable.',
+            });
+        }
+
+        for (const [k, v] of structuralChanged) updates[k] = v;
 
         const group = await Group.findByIdAndUpdate(req.params.id, updates, { new: true })
             .populate('members', 'name phone avatar');
 
-        if (!group) return res.status(404).json({ error: 'Group not found' });
         res.json({ group });
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -116,6 +135,12 @@ router.post('/:id/members', auth, adminOnly, addMemberValidations, validate, asy
         const group = await Group.findById(req.params.id);
         if (!group) return res.status(404).json({ error: 'Group not found' });
 
+        // Once the first cycle has been drawn, the member roster is locked — changing
+        // members mid-scheme would invalidate the financial model and pot expectations.
+        if ((group.currentMonth || 0) > 0) {
+            return res.status(400).json({ error: 'Member list is locked — the first draw has already been executed' });
+        }
+
         if (group.members.length >= group.maxMembers) {
             return res.status(400).json({ error: `Group is full (max ${group.maxMembers} members)` });
         }
@@ -126,6 +151,9 @@ router.post('/:id/members', auth, adminOnly, addMemberValidations, validate, asy
 
         const user = await User.findById(userId);
         if (!user) return res.status(404).json({ error: 'User not found' });
+        if (user.role === 'admin') {
+            return res.status(400).json({ error: 'Admin accounts cannot be added as group members' });
+        }
 
         group.members.push(userId);
         await group.save();
@@ -142,6 +170,10 @@ router.delete('/:id/members/:userId', auth, adminOnly, async (req, res) => {
     try {
         const group = await Group.findById(req.params.id);
         if (!group) return res.status(404).json({ error: 'Group not found' });
+
+        if ((group.currentMonth || 0) > 0) {
+            return res.status(400).json({ error: 'Member list is locked — the first draw has already been executed' });
+        }
 
         const memberIndex = group.members.indexOf(req.params.userId);
         if (memberIndex === -1) {

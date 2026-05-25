@@ -4,8 +4,9 @@ const Group = require('../models/Group');
 const User = require('../models/User');
 const Payment = require('../models/Payment');
 const EMICycle = require('../models/EMICycle');
+const AccountRequest = require('../models/AccountRequest');
 const { auth, adminOnly } = require('../middleware/auth');
-const { sendBulkNotifications } = require('../utils/notifications');
+const { sendBulkNotifications, sendPushNotification } = require('../utils/notifications');
 const config = require('../config/appConfig');
 
 const router = express.Router();
@@ -99,14 +100,65 @@ router.get('/users', auth, adminOnly, async (req, res) => {
             ];
         }
 
-        const users = await User.find(filter)
+        // Exclude "zombie" tempUsers — User docs created by send-otp that never finished
+        // signup. They have no firstName/lastName/name and would just clutter the list.
+        // Real members always have at least firstName set, admins always have a name.
+        const zombieFilter = {
+            $or: [
+                { firstName: { $exists: true, $ne: '' } },
+                { lastName:  { $exists: true, $ne: '' } },
+                { name:      { $exists: true, $ne: '' } },
+            ],
+        };
+
+        const users = await User.find({ $and: [filter, zombieFilter] })
             .select('-otp -otpExpiresAt')
             .sort({ createdAt: -1 })
             .skip((page - 1) * limit)
-            .limit(parseInt(limit));
+            .limit(parseInt(limit))
+            .lean();
 
-        const total = await User.countDocuments(filter);
-        res.json({ users, total, page: parseInt(page), pages: Math.ceil(total / limit) });
+        // Build a userId → groups[{_id,name}] map in one query, then attach to each user.
+        const userIds = users.map(u => u._id);
+        const groups  = await Group.find({ members: { $in: userIds } }, 'name members').lean();
+        const byUser  = new Map();
+        for (const g of groups) {
+            for (const memberId of (g.members || [])) {
+                const key = String(memberId);
+                if (!byUser.has(key)) byUser.set(key, []);
+                byUser.get(key).push({ _id: g._id, name: g.name });
+            }
+        }
+        const enriched = users.map(u => ({ ...u, groups: byUser.get(String(u._id)) || [] }));
+
+        const total = await User.countDocuments({ $and: [filter, zombieFilter] });
+        res.json({ users: enriched, total, page: parseInt(page), pages: Math.ceil(total / limit) });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// DELETE /api/admin/users/:id — Delete user account
+router.delete('/users/:id', auth, adminOnly, async (req, res) => {
+    try {
+        // Block deleting admin accounts — both other admins AND self.
+        const target = await User.findById(req.params.id);
+        if (!target) return res.status(404).json({ error: 'User not found' });
+        if (target.role === 'admin') {
+            return res.status(400).json({ error: 'Admin accounts cannot be deleted from User Management' });
+        }
+        if (String(target._id) === String(req.user._id)) {
+            return res.status(400).json({ error: 'You cannot delete your own account' });
+        }
+
+        await User.deleteOne({ _id: target._id });
+        // Pull the deleted user out of every group's members[] so no dangling refs remain.
+        // (Historical Payment/EMICycle records keep the userId as audit trail.)
+        const pull = await Group.updateMany(
+            { members: target._id },
+            { $pull: { members: target._id } }
+        );
+        res.json({ success: true, message: 'User deleted successfully', removedFromGroups: pull.modifiedCount });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -276,6 +328,238 @@ router.get('/analytics/group-health', auth, adminOnly, async (req, res) => {
         }));
 
         res.json({ groups: health });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/admin/account-requests/pending
+router.get('/account-requests/pending', auth, adminOnly, async (req, res) => {
+    try {
+        const pending = await AccountRequest.find({ status: 'pending' })
+            .sort({ createdAt: -1 })
+            .lean();
+        res.json({ success: true, requests: pending });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/admin/account-requests — all statuses
+router.get('/account-requests', auth, adminOnly, async (req, res) => {
+    try {
+        const { status } = req.query;
+        const filter = status ? { status } : {};
+        const requests = await AccountRequest.find(filter)
+            .populate('reviewedBy', 'name')
+            .sort({ createdAt: -1 })
+            .lean();
+        res.json({ success: true, requests });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/admin/account-requests/:requestId/approve
+router.post('/account-requests/:requestId/approve', auth, adminOnly, async (req, res) => {
+    try {
+        const request = await AccountRequest.findById(req.params.requestId);
+        if (!request) return res.status(404).json({ error: 'Request not found' });
+        if (request.status !== 'pending') {
+            return res.status(400).json({ error: 'Request is no longer pending' });
+        }
+
+        // Check phone not already in User table. If a "zombie" tempUser exists (created
+        // by send-otp but never completed signup — empty firstName/lastName/name and no
+        // PIN), clear it out so the approval can proceed. Real registered users (with
+        // a name) still get rejected.
+        const exists = await User.findOne({ phone: request.phone });
+        if (exists) {
+            const isZombie = !exists.firstName && !exists.lastName && !exists.name && !exists.pin;
+            if (!isZombie) {
+                return res.status(400).json({ error: 'Phone already registered as a user' });
+            }
+            await User.deleteOne({ _id: exists._id });
+        }
+
+        // Create approved User from request — pre-save hook will sync `name` from first+last.
+        const user = await User.create({
+            firstName: request.firstName || '',
+            lastName:  request.lastName  || '',
+            ...(request.name && !request.firstName ? { name: request.name } : {}),
+            phone: request.phone,
+            pin:   request.pin,
+            role:  'member',
+        });
+
+        request.status = 'approved';
+        request.reviewedAt = new Date();
+        request.reviewedBy = req.user._id;
+        await request.save();
+
+        // In-app notification for the new user.
+        const { notifyUsers } = require('../utils/notify');
+        await notifyUsers(user._id, {
+            type: 'account_approved',
+            title: 'Account approved',
+            body: 'Your account was approved. You can now log in with your PIN.',
+            data: { userId: String(user._id) },
+        });
+
+        res.json({ success: true, message: 'Account approved', user: { _id: user._id, name: user.name, phone: user.phone } });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/admin/account-requests/:requestId/reject
+router.post('/account-requests/:requestId/reject', auth, adminOnly, async (req, res) => {
+    try {
+        const { reason } = req.body;
+        const request = await AccountRequest.findById(req.params.requestId);
+        if (!request) return res.status(404).json({ error: 'Request not found' });
+        if (request.status !== 'pending') {
+            return res.status(400).json({ error: 'Request is no longer pending' });
+        }
+
+        // Delete the rejected request entirely (rather than soft-marking it) so the
+        // applicant can try signing up again later. Soft-rejection used to permanently
+        // block re-applications via the signup-with-pin "rejected" check.
+        const phone = request.phone;
+        await AccountRequest.deleteOne({ _id: request._id });
+
+        // Clean up any zombie tempUser (created by repeated send-otp calls). Don't touch
+        // an actual registered user.
+        const existingUser = await User.findOne({ phone });
+        if (existingUser && !existingUser.firstName && !existingUser.lastName && !existingUser.name && !existingUser.pin) {
+            await User.deleteOne({ _id: existingUser._id });
+        }
+
+        res.json({
+            success: true,
+            message: 'Account request rejected and removed',
+            reason: reason?.trim() || null,    // returned for the admin's logs/UI even though the record is gone
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/admin/groups/:groupId/configure-pot
+// Bulk-set winner + EMI amounts per month for a group.
+// Body: { potConfig: [{ month, selectedWinner, winnerEMI, otherMemberEMI }, ...] }
+router.post('/groups/:groupId/configure-pot', auth, adminOnly, async (req, res) => {
+    try {
+        const { potConfig } = req.body;
+        if (!Array.isArray(potConfig) || potConfig.length === 0) {
+            return res.status(400).json({ error: 'potConfig must be a non-empty array' });
+        }
+
+        const group = await Group.findById(req.params.groupId);
+        if (!group) return res.status(404).json({ error: 'Group not found' });
+
+        const memberSet = new Set(group.members.map(id => String(id)));
+        const memberCount = group.members.length;
+        const currentMonth = group.currentMonth || 0;
+        const seenMonths = new Set();
+        const sanitized = [];
+
+        // Preserve already-run (locked) months from the existing config so the client
+        // can submit a payload covering only the future months without wiping history.
+        const lockedRows = (group.monthlyConfig || []).filter(c => c.month <= currentMonth);
+        const usedWinners = new Set();
+        for (const row of lockedRows) {
+            sanitized.push({
+                month:      row.month,
+                winner:     row.winner,
+                reducedEmi: row.reducedEmi,
+                emiAmount:  row.emiAmount,
+                potAmount:  row.potAmount,
+            });
+            seenMonths.add(row.month);
+            if (row.winner) usedWinners.add(String(row.winner));
+        }
+
+        for (const entry of potConfig) {
+            const month = Number(entry.month);
+            if (!Number.isInteger(month) || month < 1 || month > group.totalMonths) {
+                return res.status(400).json({ error: `Invalid month: ${entry.month}. Must be 1-${group.totalMonths}` });
+            }
+            if (month <= currentMonth) {
+                return res.status(400).json({ error: `Month ${month} is locked — its cycle has already been executed` });
+            }
+            if (seenMonths.has(month)) {
+                return res.status(400).json({ error: `Duplicate entry for month ${month}` });
+            }
+            seenMonths.add(month);
+
+            const winnerEMI      = Number(entry.winnerEMI);
+            const otherMemberEMI = Number(entry.otherMemberEMI);
+            if (!Number.isFinite(winnerEMI) || winnerEMI <= 0) {
+                return res.status(400).json({ error: `Month ${month}: winnerEMI must be a positive number` });
+            }
+            if (!Number.isFinite(otherMemberEMI) || otherMemberEMI <= 0) {
+                return res.status(400).json({ error: `Month ${month}: otherMemberEMI must be a positive number` });
+            }
+
+            let winnerId = null;
+            if (entry.selectedWinner) {
+                winnerId = String(entry.selectedWinner);
+                if (!memberSet.has(winnerId)) {
+                    return res.status(400).json({ error: `Month ${month}: selectedWinner is not a member of this group` });
+                }
+                if (usedWinners.has(winnerId)) {
+                    return res.status(400).json({ error: `Month ${month}: this member is already a winner in another month` });
+                }
+                usedWinners.add(winnerId);
+            }
+
+            sanitized.push({
+                month,
+                winner: winnerId,
+                emiAmount: winnerEMI,
+                reducedEmi: otherMemberEMI,
+                potAmount: winnerEMI + otherMemberEMI * Math.max(0, memberCount - 1),
+            });
+        }
+
+        sanitized.sort((a, b) => a.month - b.month);
+        group.monthlyConfig = sanitized;
+
+        // Auto-activate a pending group once POT plan has at least one planned winner AND
+        // the roster has members. Draw route requires status==='active'; without this the
+        // admin would have no way to start the scheme.
+        const plannedHasWinner = sanitized.some(c => c.winner && c.month > (group.currentMonth || 0));
+        if (group.status === 'pending' && plannedHasWinner && group.members.length > 0) {
+            group.status = 'active';
+            if (!group.startDate) group.startDate = new Date();
+        }
+
+        await group.save();
+
+        res.json({ success: true, message: 'POT configuration saved', groupId: group._id, status: group.status });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/admin/groups/:groupId/activate — Manually flip a pending group to active.
+// The configurePot route auto-activates in the standard flow; this is the escape hatch
+// for cases where the admin wants to start the scheme without re-saving the POT plan.
+router.post('/groups/:groupId/activate', auth, adminOnly, async (req, res) => {
+    try {
+        const group = await Group.findById(req.params.groupId);
+        if (!group) return res.status(404).json({ error: 'Group not found' });
+
+        if (group.status === 'active')    return res.status(400).json({ error: 'Group is already active' });
+        if (group.status === 'completed') return res.status(400).json({ error: 'Group is already completed' });
+        if (group.members.length === 0)   return res.status(400).json({ error: 'Add at least one member before activating' });
+
+        group.status = 'active';
+        if (!group.startDate) group.startDate = new Date();
+        await group.save();
+
+        res.json({ success: true, message: 'Group activated', groupId: group._id, status: group.status });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }

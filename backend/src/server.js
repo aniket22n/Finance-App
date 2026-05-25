@@ -19,6 +19,7 @@ const groupRoutes = require('./routes/groups');
 const paymentRoutes = require('./routes/payments');
 const emiRoutes = require('./routes/emi');
 const adminRoutes = require('./routes/admin');
+const notificationsRoutes = require('./routes/notifications');
 
 const app = express();
 
@@ -47,17 +48,18 @@ app.use('/api/groups', groupRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/emi', emiRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/notifications', notificationsRoutes);
 
 // 404 handler
 app.use((req, res) => {
-    res.status(404).json({ error: true, message: 'Route not found' });
+    res.status(404).json({ error: 'Route not found' });
 });
 
 // Global error handler
 app.use((err, req, res, next) => {
     console.error('💥 Server Error:', err.message);
     const status = err.status || 500;
-    const response = { error: true, message: err.message || 'Internal server error' };
+    const response = { error: err.message || 'Internal server error' };
 
     // Include stack trace in dev mode
     if (process.env.NODE_ENV !== 'production' && err.stack) {

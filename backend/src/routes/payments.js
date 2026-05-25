@@ -49,6 +49,16 @@ router.post('/initiate', auth, initiatePaymentValidations, validate, async (req,
         }
 
         await payment.save();
+
+        // Notify all admins so the bell badge increments on the dashboard.
+        const { notifyAllAdmins } = require('../utils/notify');
+        await notifyAllAdmins({
+            type: 'payment_submitted',
+            title: 'New Payment Submitted',
+            body: `${req.user.name || req.user.phone} paid ₹${amount.toLocaleString('en-IN')} for ${group.name} · Month ${month}`,
+            data: { paymentId: String(payment._id), groupId: String(groupId), month },
+        });
+
         res.json({ payment });
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -68,14 +78,22 @@ router.put('/:id/verify', auth, adminOnly, async (req, res) => {
         if (notes) payment.notes = notes;
         await payment.save();
 
-        // Notify user about verification
+        // Notify the member — push (best-effort) + in-app bell.
+        const isVerified = (status || 'verified') === 'verified';
+        const title = isVerified ? '✅ Payment Verified' : '❌ Payment Rejected';
+        const body = isVerified
+            ? `Your payment of ₹${payment.amount.toLocaleString('en-IN')} has been verified.`
+            : `Your payment of ₹${payment.amount.toLocaleString('en-IN')} was rejected. ${notes || ''}`.trim();
         if (payment.user.expoPushToken) {
-            const title = status === 'verified' ? '✅ Payment Verified' : '❌ Payment Rejected';
-            const body = status === 'verified'
-                ? `Your payment of ₹${payment.amount} has been verified.`
-                : `Your payment of ₹${payment.amount} was rejected. ${notes || ''}`;
             await sendPushNotification(payment.user.expoPushToken, title, body, { paymentId: payment._id });
         }
+        const { notifyUsers } = require('../utils/notify');
+        await notifyUsers(payment.user._id, {
+            type: isVerified ? 'payment_verified' : 'payment_rejected',
+            title,
+            body,
+            data: { paymentId: String(payment._id) },
+        });
 
         res.json({ payment });
     } catch (error) {
@@ -113,6 +131,25 @@ router.get('/user/:userId', auth, async (req, res) => {
         const payments = await Payment.find({ user: req.params.userId })
             .populate('group', 'name potAmount')
             .sort({ createdAt: -1 });
+
+        res.json({ payments });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/payments/admin/list — All payments with optional status filter (admin)
+router.get('/admin/list', auth, adminOnly, async (req, res) => {
+    try {
+        const { status, limit = 100 } = req.query;
+        const filter = {};
+        if (status) filter.status = status;
+
+        const payments = await Payment.find(filter)
+            .populate('user', 'name phone avatar')
+            .populate('group', 'name')
+            .sort({ createdAt: -1 })
+            .limit(parseInt(limit));
 
         res.json({ payments });
     } catch (error) {

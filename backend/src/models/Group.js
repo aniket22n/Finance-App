@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 
 const monthlyConfigSchema = new mongoose.Schema({
     month: { type: Number, required: true },
+    winner: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     potAmount: { type: Number, required: true },
     emiAmount: { type: Number, required: true },
     reducedEmi: { type: Number, required: true },
@@ -14,8 +15,8 @@ const groupSchema = new mongoose.Schema({
     emiAmount: { type: Number, required: true },       // default EMI
     reducedEmi: { type: Number, required: true },      // default reduced
     monthlyConfig: [monthlyConfigSchema],               // per-month overrides
-    minMembers: { type: Number, default: 20, min: 20 },
-    maxMembers: { type: Number, default: 100, max: 100 },
+    minMembers: { type: Number, default: 2, min: 2 },
+    maxMembers: { type: Number, default: 100, min: 2, max: 100 },
     members: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     currentMonth: { type: Number, default: 0 },
     totalMonths: { type: Number, required: true },

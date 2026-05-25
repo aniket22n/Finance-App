@@ -1,52 +1,86 @@
-import React, { useEffect } from 'react';
+import React, { useCallback, useEffect } from 'react';
+import { View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { registerRootComponent } from 'expo';
-import * as Notifications from 'expo-notifications';
+import * as SplashScreen from 'expo-splash-screen';
+import Constants from 'expo-constants';
+import {
+    useFonts,
+    Poppins_400Regular,
+    Poppins_500Medium,
+    Poppins_600SemiBold,
+    Poppins_700Bold,
+} from '@expo-google-fonts/poppins';
 import { AuthProvider } from './src/context/AuthContext';
+import { ThemeProvider, useTheme } from './src/context/ThemeContext';
 import AppNavigator from './src/navigation/AppNavigator';
 
-// Configure notification handler
-Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-        shouldShowAlert: true,
-        shouldPlaySound: true,
-        shouldSetBadge: true,
-    }),
-});
+function ThemedStatusBar() {
+    const { isDark } = useTheme();
+    return <StatusBar style={isDark ? 'light' : 'dark'} />;
+}
+
+const isExpoGo = Constants.executionEnvironment === 'storeClient';
+
+SplashScreen.preventAutoHideAsync();
+
+if (!isExpoGo) {
+    const Notifications = require('expo-notifications');
+    Notifications.setNotificationHandler({
+        handleNotification: async () => ({
+            shouldShowAlert: true,
+            shouldPlaySound: true,
+            shouldSetBadge: true,
+        }),
+    });
+}
 
 function App() {
+    const [fontsLoaded, fontError] = useFonts({
+        Poppins_400Regular,
+        Poppins_500Medium,
+        Poppins_600SemiBold,
+        Poppins_700Bold,
+    });
+
+    const onLayoutRootView = useCallback(() => {
+        if (fontsLoaded || fontError) {
+            SplashScreen.hide();
+        }
+    }, [fontsLoaded, fontError]);
+
     useEffect(() => {
+        if (isExpoGo) return; // Push notifications unsupported in Expo Go since SDK 53
         registerForPushNotifications();
     }, []);
 
     const registerForPushNotifications = async () => {
         try {
-            const { status: existingStatus } = await Notifications.getPermissionsAsync();
-            let finalStatus = existingStatus;
-
-            if (existingStatus !== 'granted') {
+            const Notifications = require('expo-notifications');
+            const { status: existing } = await Notifications.getPermissionsAsync();
+            let finalStatus = existing;
+            if (existing !== 'granted') {
                 const { status } = await Notifications.requestPermissionsAsync();
                 finalStatus = status;
             }
-
-            if (finalStatus !== 'granted') {
-                console.log('Push notification permission not granted');
-                return;
-            }
-
-            const token = (await Notifications.getExpoPushTokenAsync()).data;
-            console.log('Expo Push Token:', token);
-            // Token will be sent to backend when user updates profile
+            if (finalStatus !== 'granted') return;
+            await Notifications.getExpoPushTokenAsync();
         } catch (err) {
-            console.log('Push notification setup error:', err);
+            // Permission not granted or device doesn't support push
         }
     };
 
+    if (!fontsLoaded && !fontError) return null;
+
     return (
-        <AuthProvider>
-            <StatusBar style="light" />
-            <AppNavigator />
-        </AuthProvider>
+        <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
+            <ThemeProvider>
+                <AuthProvider>
+                    <ThemedStatusBar />
+                    <AppNavigator />
+                </AuthProvider>
+            </ThemeProvider>
+        </View>
     );
 }
 
