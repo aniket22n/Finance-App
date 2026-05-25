@@ -604,14 +604,15 @@ router.post('/groups/:groupId/activate', auth, adminOnly, async (req, res) => {
     }
 });
 
-// GET /api/admin/payments — All payments with semantic status filter
+// GET /api/admin/payments — All payments with semantic status + group + month filters
 // status=pending → DB 'paid' (submitted by member, awaiting admin action)
 // status=rejected → DB 'failed' or 'rejected'
 // status=verified → DB 'verified'
 router.get('/payments', auth, adminOnly, async (req, res) => {
     try {
-        const { status, limit = 100 } = req.query;
+        const { status, group, month, limit = 100 } = req.query;
         const filter = {};
+
         if (status === 'pending') {
             filter.status = 'paid';
         } else if (status === 'rejected') {
@@ -620,9 +621,17 @@ router.get('/payments', auth, adminOnly, async (req, res) => {
             filter.status = status;
         }
 
+        if (group && group !== 'all') {
+            filter.group = group;
+        }
+        if (month && month !== 'all') {
+            const m = parseInt(month);
+            if (!isNaN(m)) filter.month = m;
+        }
+
         const payments = await Payment.find(filter)
             .populate('user', 'name phone avatar')
-            .populate('group', 'name')
+            .populate('group', 'name totalMonths')
             .sort({ createdAt: -1 })
             .limit(parseInt(limit))
             .lean();
