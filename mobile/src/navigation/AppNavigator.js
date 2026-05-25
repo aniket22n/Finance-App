@@ -35,6 +35,7 @@ import AdminPaymentDetailScreen from '../screens/AdminPaymentDetailScreen';
 import AdminAccountRequestsScreen from '../screens/AdminAccountRequestsScreen';
 import AdminPOTWinnerConfigScreen from '../screens/AdminPOTWinnerConfigScreen';
 import AdminAddMembersScreen from '../screens/AdminAddMembersScreen';
+import AdminPaymentOTPScreen from '../screens/AdminPaymentOTPScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -163,6 +164,11 @@ export default function AppNavigator() {
                         <Stack.Screen
                             name="AdminAddMembers"
                             component={AdminAddMembersScreen}
+                            options={{ headerShown: false }}
+                        />
+                        <Stack.Screen
+                            name="AdminPaymentOTP"
+                            component={AdminPaymentOTPScreen}
                             options={{ headerShown: false }}
                         />
                     </>

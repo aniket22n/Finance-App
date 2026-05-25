@@ -115,8 +115,13 @@ export const rejectAccountRequest = (requestId, reason) => api.post(`/admin/acco
 
 // ── Payments (admin) ──
 export const getAdminPayments = (status) => api.get('/payments/admin/list', { params: status ? { status } : {} });
+export const getAdminPaymentsList = (status) => api.get('/admin/payments', { params: status && status !== 'all' ? { status } : {} });
 export const getPendingPayments = () => api.get('/payments/pending/all');
-export const verifyPayment = (id, status, notes) => api.put(`/payments/${id}/verify`, { status, notes });
+export const requestPaymentActionOtp = (id) => api.post(`/payments/${id}/request-action-otp`);
+export const verifyPayment = (id, status, notes, otp) => api.put(`/payments/${id}/verify`, { status, notes, otp });
+export const adminVerifyPayment = (id, otp) => api.post(`/admin/payments/${id}/verify`, { otp });
+export const adminRejectPayment = (id, otp, reason) => api.post(`/admin/payments/${id}/reject`, { otp, reason });
+export const adminChangePaymentStatus = (id, newStatus, otp) => api.post(`/admin/payments/${id}/change-status`, { newStatus, otp });
 
 // ── EMI (admin) ──
 // data: { groupId, winnerId, reducedEmi?, emiAmount? }

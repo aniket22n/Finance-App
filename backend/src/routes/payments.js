@@ -1,9 +1,39 @@
 const express = require('express');
 const Payment = require('../models/Payment');
 const Group = require('../models/Group');
+const User = require('../models/User');
 const { auth, adminOnly } = require('../middleware/auth');
 const { sendPushNotification } = require('../utils/notifications');
 const { validate, initiatePaymentValidations } = require('../middleware/validators');
+const config = require('../config/appConfig');
+
+const sendAdminActionOtp = async (admin) => {
+    const otp = config.devOtp || Math.floor(1000 + Math.random() * 9000).toString();
+    admin.otp = otp;
+    admin.otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    await admin.save();
+    if (process.env.FAST2SMS_API_KEY) {
+        const axios = require('axios');
+        try {
+            await axios({
+                method: 'POST',
+                url: 'https://www.fast2sms.com/dev/bulkV2',
+                headers: { authorization: process.env.FAST2SMS_API_KEY, 'Content-Type': 'application/json' },
+                data: { variables_values: otp, route: 'otp', numbers: admin.phone },
+            });
+        } catch (e) {
+            console.error('SMS OTP failed:', e.message);
+        }
+    } else {
+        console.log(`📱 (DEV) Admin action OTP for ${admin.phone}: ${otp}`);
+    }
+};
+
+const verifyAdminOtp = (admin, otp) => {
+    const validOtp = admin.otp === otp && admin.otpExpiresAt > new Date();
+    const devMode = config.devOtp && otp === config.devOtp;
+    return validOtp || devMode;
+};
 
 const router = express.Router();
 
@@ -65,37 +95,69 @@ router.post('/initiate', auth, initiatePaymentValidations, validate, async (req,
     }
 });
 
-// PUT /api/payments/:id/verify — Admin verifies a payment
+// POST /api/payments/:id/request-action-otp — Admin requests OTP to change payment status
+router.post('/:id/request-action-otp', auth, adminOnly, async (req, res) => {
+    try {
+        const admin = await User.findById(req.user._id);
+        if (!admin) return res.status(404).json({ error: 'Admin not found' });
+        await sendAdminActionOtp(admin);
+        res.json({ success: true, message: 'OTP sent to your registered phone' });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// PUT /api/payments/:id/verify — Admin changes payment status (requires OTP)
 router.put('/:id/verify', auth, adminOnly, async (req, res) => {
     try {
-        const { status, notes } = req.body;
+        const { status, notes, otp } = req.body;
+
+        if (!otp) return res.status(400).json({ error: 'OTP is required to change payment status' });
+        const admin = await User.findById(req.user._id);
+        if (!verifyAdminOtp(admin, otp)) {
+            return res.status(400).json({ error: 'Invalid or expired OTP' });
+        }
+        admin.otp = undefined;
+        admin.otpExpiresAt = undefined;
+        await admin.save();
+
+        const newStatus = status || 'verified';
         const payment = await Payment.findById(req.params.id).populate('user', 'name phone expoPushToken');
         if (!payment) return res.status(404).json({ error: 'Payment not found' });
 
-        payment.status = status || 'verified';
+        payment.status = newStatus;
         payment.verifiedAt = new Date();
         payment.verifiedBy = req.user._id;
         if (notes) payment.notes = notes;
         await payment.save();
 
-        // Notify the member — push (best-effort) + in-app bell.
-        const isVerified = (status || 'verified') === 'verified';
-        const title = isVerified ? '✅ Payment Verified' : '❌ Payment Rejected';
-        const body = isVerified
-            ? `Your payment of ₹${payment.amount.toLocaleString('en-IN')} has been verified.`
-            : `Your payment of ₹${payment.amount.toLocaleString('en-IN')} was rejected. ${notes || ''}`.trim();
-        if (payment.user.expoPushToken) {
-            await sendPushNotification(payment.user.expoPushToken, title, body, { paymentId: payment._id });
-        }
+        // Notify member
         const { notifyUsers } = require('../utils/notify');
+        let title, body, notifType;
+        if (newStatus === 'verified') {
+            title = '✅ Payment Verified';
+            body = `Your payment of ₹${payment.amount.toLocaleString('en-IN')} has been verified.`;
+            notifType = 'payment_verified';
+        } else if (newStatus === 'failed') {
+            title = '❌ Payment Rejected';
+            body = `Your payment of ₹${payment.amount.toLocaleString('en-IN')} was rejected. Please resubmit your payment.${notes ? ' ' + notes : ''}`;
+            notifType = 'payment_rejected';
+        } else {
+            title = '🔄 Payment Reset';
+            body = `Your payment of ₹${payment.amount.toLocaleString('en-IN')} has been reset to ${newStatus}.`;
+            notifType = 'payment_updated';
+        }
+        if (payment.user.expoPushToken) {
+            sendPushNotification(payment.user.expoPushToken, title, body, { paymentId: String(payment._id) }).catch(() => {});
+        }
         await notifyUsers(payment.user._id, {
-            type: isVerified ? 'payment_verified' : 'payment_rejected',
+            type: notifType,
             title,
             body,
             data: { paymentId: String(payment._id) },
         });
 
-        res.json({ payment });
+        res.json({ success: true, payment });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }

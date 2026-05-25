@@ -1,10 +1,10 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
     View, Text, ScrollView, TouchableOpacity, StyleSheet,
-    ActivityIndicator, Alert,
+    ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { verifyPayment } from '../services/api';
+import { requestPaymentActionOtp } from '../services/api';
 import { useTheme } from '../context/ThemeContext';
 import { F } from '../theme';
 import { apiErrMsg } from '../utils/error';
@@ -12,8 +12,10 @@ import Toast, { useToast } from '../components/Toast';
 
 const BADGE = {
     paid:     { bg: '#F59E0B', label: 'Pending' },
+    pending:  { bg: '#6B7280', label: 'Awaiting' },
     verified: { bg: '#10B981', label: 'Verified' },
     failed:   { bg: '#EF4444', label: 'Rejected' },
+    rejected: { bg: '#EF4444', label: 'Rejected' },
 };
 
 function Row({ label, value, valueColor }) {
@@ -44,45 +46,37 @@ export default function AdminPaymentDetailScreen({ route, navigation }) {
     const { payment: initial } = route.params;
     const { colors } = useTheme();
     const [payment, setPayment] = useState(initial);
-    const [busy, setBusy] = useState(null); // 'verify' | 'reject'
+    const [sendingOtp, setSendingOtp] = useState(false);
     const { toast, show } = useToast();
 
-    const badge = BADGE[payment.status] || { bg: colors.border, label: payment.status };
-    const canAction = payment.status === 'paid';
-
-    const doVerify = async () => {
-        setBusy('verify');
-        try {
-            await verifyPayment(payment._id, 'verified');
-            setPayment(p => ({ ...p, status: 'verified' }));
-        } catch (err) {
-            show(apiErrMsg(err, 'Failed to verify'), 'error');
-        } finally {
-            setBusy(null);
+    useEffect(() => {
+        if (route.params?.payment) {
+            setPayment(route.params.payment);
         }
-    };
+    }, [route.params?.payment]);
 
-    const doReject = () => {
-        Alert.alert(
-            'Reject Payment',
-            `Reject ₹${payment.amount?.toLocaleString()} from ${payment.user?.name || 'member'}?`,
-            [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                    text: 'Reject', style: 'destructive', onPress: async () => {
-                        setBusy('reject');
-                        try {
-                            await verifyPayment(payment._id, 'failed');
-                            setPayment(p => ({ ...p, status: 'failed' }));
-                        } catch (err) {
-                            show(apiErrMsg(err, 'Failed to reject'), 'error');
-                        } finally {
-                            setBusy(null);
-                        }
-                    },
-                },
-            ]
-        );
+    const badge = BADGE[payment.status] || { bg: colors.border, label: payment.status };
+
+    const isPending  = payment.status === 'paid';
+    const isVerified = payment.status === 'verified';
+    const isRejected = payment.status === 'failed' || payment.status === 'rejected';
+
+    const navigateToOtp = async (action) => {
+        setSendingOtp(true);
+        try {
+            await requestPaymentActionOtp(payment._id);
+        } catch (err) {
+            show(apiErrMsg(err, 'Could not send OTP'), 'error');
+            setSendingOtp(false);
+            return;
+        }
+        setSendingOtp(false);
+        navigation.navigate('AdminPaymentOTP', {
+            paymentId:  payment._id,
+            action,
+            amount:     payment.amount,
+            memberName: payment.user?.name || payment.user?.phone || 'Member',
+        });
     };
 
     const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -98,7 +92,7 @@ export default function AdminPaymentDetailScreen({ route, navigation }) {
                 >
                     <Ionicons name="arrow-back" size={22} color={colors.text} />
                 </TouchableOpacity>
-                <Text style={styles.headerTitle}>Payment Detail</Text>
+                <Text style={styles.headerTitle}>Payment Details</Text>
                 <View style={[styles.badge, { backgroundColor: badge.bg }]}>
                     <Text style={styles.badgeText}>{badge.label}</Text>
                 </View>
@@ -134,36 +128,60 @@ export default function AdminPaymentDetailScreen({ route, navigation }) {
                             <Row label="Verified by" value={payment.verifiedBy.name} />
                         </>
                     ) : null}
+                    {payment.notes ? (
+                        <>
+                            <View style={styles.divider} />
+                            <Row label="Notes" value={payment.notes} />
+                        </>
+                    ) : null}
                 </View>
 
-                {/* Action buttons — only for pending */}
-                {canAction && (
-                    <View style={styles.actions}>
+                {/* Action buttons */}
+                {sendingOtp ? (
+                    <View style={styles.loadingRow}>
+                        <ActivityIndicator color={colors.primary} />
+                        <Text style={styles.loadingText}>Sending OTP…</Text>
+                    </View>
+                ) : isPending ? (
+                    <View style={styles.btnRow}>
                         <TouchableOpacity
-                            style={[styles.verifyBtn, busy && styles.btnDisabled]}
-                            onPress={doVerify}
-                            disabled={!!busy}
-                            activeOpacity={0.8}
+                            style={[styles.actionBtn, { backgroundColor: '#10B981' }]}
+                            onPress={() => navigateToOtp('verify')}
+                            activeOpacity={0.85}
                         >
-                            {busy === 'verify'
-                                ? <ActivityIndicator color="#fff" size="small" />
-                                : <><Ionicons name="checkmark" size={16} color="#fff" /><Text style={styles.verifyText}>Verify</Text></>
-                            }
+                            <Ionicons name="checkmark-circle-outline" size={18} color="#fff" />
+                            <Text style={styles.actionBtnText}>Verify</Text>
                         </TouchableOpacity>
                         <TouchableOpacity
-                            style={[styles.rejectBtn, busy && styles.btnDisabled]}
-                            onPress={doReject}
-                            disabled={!!busy}
-                            activeOpacity={0.8}
+                            style={[styles.actionBtn, { backgroundColor: '#EF4444' }]}
+                            onPress={() => navigateToOtp('reject')}
+                            activeOpacity={0.85}
                         >
-                            {busy === 'reject'
-                                ? <ActivityIndicator color="#fff" size="small" />
-                                : <><Ionicons name="close" size={16} color="#fff" /><Text style={styles.rejectText}>Reject</Text></>
-                            }
+                            <Ionicons name="close-circle-outline" size={18} color="#fff" />
+                            <Text style={styles.actionBtnText}>Reject</Text>
                         </TouchableOpacity>
                     </View>
-                )}
+                ) : isVerified ? (
+                    <TouchableOpacity
+                        style={[styles.changeBtn, { backgroundColor: '#EF4444' }]}
+                        onPress={() => navigateToOtp('change-to-rejected')}
+                        activeOpacity={0.85}
+                    >
+                        <Ionicons name="close-circle-outline" size={18} color="#fff" />
+                        <Text style={styles.changeBtnText}>Change to Rejected</Text>
+                    </TouchableOpacity>
+                ) : isRejected ? (
+                    <TouchableOpacity
+                        style={[styles.changeBtn, { backgroundColor: '#10B981' }]}
+                        onPress={() => navigateToOtp('change-to-verified')}
+                        activeOpacity={0.85}
+                    >
+                        <Ionicons name="checkmark-circle-outline" size={18} color="#fff" />
+                        <Text style={styles.changeBtnText}>Change to Verified</Text>
+                    </TouchableOpacity>
+                ) : null}
             </ScrollView>
+
             <Toast {...toast} />
         </View>
     );
@@ -189,7 +207,7 @@ function makeStyles(colors) {
             paddingVertical: 4,
             borderRadius: 8,
         },
-        badgeText:   { fontSize: 12, fontFamily: F.bold, color: '#fff' },
+        badgeText: { fontSize: 12, fontFamily: F.bold, color: '#fff' },
 
         scroll:  { flex: 1 },
         content: { padding: 16, gap: 12 },
@@ -212,29 +230,37 @@ function makeStyles(colors) {
         },
         divider: { height: 1, backgroundColor: colors.border },
 
-        actions: { flexDirection: 'row', gap: 12 },
-        verifyBtn: {
-            flex: 1,
-            height: 52,
-            backgroundColor: '#10B981',
-            borderRadius: 12,
+        loadingRow: {
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: 6,
+            height: 56,
+            gap: 10,
         },
-        rejectBtn: {
+        loadingText: { fontSize: 14, fontFamily: F.medium, color: colors.textSecondary },
+
+        btnRow: { flexDirection: 'row', gap: 10 },
+        actionBtn: {
             flex: 1,
-            height: 52,
-            backgroundColor: '#EF4444',
-            borderRadius: 12,
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'center',
+            height: 52,
+            borderRadius: 12,
             gap: 6,
+            elevation: 3,
         },
-        btnDisabled: { opacity: 0.5 },
-        verifyText:  { fontSize: 14, fontFamily: F.semibold, color: '#fff' },
-        rejectText:  { fontSize: 14, fontFamily: F.semibold, color: '#fff' },
+        actionBtnText: { fontSize: 14, fontFamily: F.semibold, color: '#fff' },
+
+        changeBtn: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            height: 52,
+            borderRadius: 12,
+            gap: 8,
+            elevation: 3,
+        },
+        changeBtnText: { fontSize: 14, fontFamily: F.semibold, color: '#fff' },
     });
 }

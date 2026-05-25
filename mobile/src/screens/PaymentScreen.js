@@ -1,11 +1,10 @@
 import React, { useMemo, useState, useCallback } from 'react';
 import {
     View, Text, ScrollView, TouchableOpacity, Alert, Linking,
-    StyleSheet, RefreshControl, ActivityIndicator, Modal, TextInput, Image,
+    StyleSheet, RefreshControl, ActivityIndicator, Modal, TextInput,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { getUserPayments, getGroups, initiatePayment, getPaymentConfig } from '../services/api';
@@ -15,10 +14,9 @@ import Toast, { useToast } from '../components/Toast';
 import { useInputFocus, focusBorder, webOutlineReset } from '../hooks/useInputFocus';
 
 const buildMethods = (colors) => [
-    { id: 'upi',   icon: 'qr-code',   color: colors.success, label: 'UPI',            sub: 'GPay, PhonePe, Paytm — 0% fee' },
-    { id: 'bank',  icon: 'business',  color: colors.info,    label: 'Bank Transfer',  sub: 'NEFT / IMPS / RTGS' },
-    { id: 'cash',  icon: 'cash',      color: colors.warning, label: 'Cash',           sub: 'Admin verifies in person' },
-    { id: 'other', icon: 'image',     color: colors.primary, label: 'Upload Receipt', sub: 'Screenshot / photo proof' },
+    { id: 'upi',  icon: 'qr-code',  color: colors.success, label: 'UPI',           sub: 'GPay, PhonePe, Paytm — 0% fee' },
+    { id: 'bank', icon: 'business', color: colors.info,    label: 'Bank Transfer', sub: 'NEFT / IMPS / RTGS' },
+    { id: 'cash', icon: 'cash',     color: colors.warning, label: 'Cash',          sub: 'Admin verifies in person' },
 ];
 
 export default function PaymentScreen() {
@@ -35,7 +33,6 @@ export default function PaymentScreen() {
     const [selectedPending, setSelectedPending] = useState(null);
     const [paymentMethod, setPaymentMethod] = useState('');
     const [utrNumber, setUtrNumber] = useState('');
-    const [receiptBase64, setReceiptBase64] = useState(null);
     const [submitting, setSubmitting] = useState(false);
     const [utrFocused, utrFocusProps] = useInputFocus();
 
@@ -68,7 +65,6 @@ export default function PaymentScreen() {
         setSelectedPending({ group, amount, month });
         setPaymentMethod('');
         setUtrNumber('');
-        setReceiptBase64(null);
         setModalVisible(true);
     };
 
@@ -82,12 +78,10 @@ export default function PaymentScreen() {
                 amount: selectedPending.amount,
                 paymentMethod: method,
                 upiTransactionId: utrNumber,
-                receipt: receiptBase64,
             });
             setModalVisible(false);
             setPaymentMethod('');
             setUtrNumber('');
-            setReceiptBase64(null);
             show('Payment submitted — pending verification');
             setTimeout(() => loadData(), 600);
         } catch (err) {
@@ -121,26 +115,14 @@ export default function PaymentScreen() {
         );
     };
 
-    const pickImage = async () => {
-        const result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
-            allowsEditing: true,
-            quality: 0.5,
-            base64: true,
-        });
-        if (!result.canceled && result.assets[0].base64) {
-            setReceiptBase64(`data:image/jpeg;base64,${result.assets[0].base64}`);
-        }
-    };
-
     const styles = useMemo(() => makeStyles(colors), [colors]);
 
     if (loading) {
         return <View style={styles.center}><ActivityIndicator size="large" color={colors.primary} /></View>;
     }
 
-    const pendingPayments = payments.filter(p => p.status === 'pending');
-    const completedPayments = payments.filter(p => p.status !== 'pending');
+    const pendingPayments = payments.filter(p => p.status === 'pending' || p.status === 'rejected');
+    const completedPayments = payments.filter(p => p.status !== 'pending' && p.status !== 'rejected');
 
     return (
         <View style={styles.container}>
@@ -167,20 +149,28 @@ export default function PaymentScreen() {
                     <Text style={styles.sectionTitle}>Due Payments</Text>
                     {pendingPayments.map(payment => {
                         const group = groups.find(g => g._id === (payment.group?._id || payment.group));
+                        const isRejected = payment.status === 'rejected';
                         return (
                             <View key={payment._id} style={styles.dueRow}>
                                 <View style={styles.dueInfo}>
-                                    <Text style={styles.dueName}>{payment.group?.name || `Month ${payment.month}`}</Text>
+                                    <View style={styles.dueNameRow}>
+                                        <Text style={styles.dueName}>{payment.group?.name || `Month ${payment.month}`}</Text>
+                                        {isRejected && (
+                                            <View style={styles.rejectedBadge}>
+                                                <Text style={styles.rejectedBadgeText}>Rejected</Text>
+                                            </View>
+                                        )}
+                                    </View>
                                     <Text style={styles.dueAmount}>₹{payment.amount?.toLocaleString()}</Text>
-                                    <Text style={styles.dueSub}>Month {payment.month}</Text>
+                                    <Text style={styles.dueSub}>Month {payment.month}{isRejected ? ' · Tap to resubmit' : ''}</Text>
                                 </View>
                                 {group && (
                                     <TouchableOpacity
-                                        style={styles.payBtn}
+                                        style={[styles.payBtn, isRejected && styles.payBtnRejected]}
                                         onPress={() => handlePayPress(group, payment.amount, payment.month)}
                                         activeOpacity={0.85}
                                     >
-                                        <Text style={styles.payBtnText}>Pay Now</Text>
+                                        <Text style={styles.payBtnText}>{isRejected ? 'Resubmit' : 'Pay Now'}</Text>
                                     </TouchableOpacity>
                                 )}
                             </View>
@@ -289,21 +279,6 @@ export default function PaymentScreen() {
                                     </View>
                                 )}
 
-                                {paymentMethod === 'other' && (
-                                    <>
-                                        <Text style={styles.infoLabel}>Upload Payment Receipt</Text>
-                                        <TouchableOpacity style={styles.uploadBtn} onPress={pickImage}>
-                                            <Ionicons name="cloud-upload-outline" size={22} color={colors.primary} />
-                                            <Text style={styles.uploadText}>
-                                                {receiptBase64 ? 'Change Receipt' : 'Select Image'}
-                                            </Text>
-                                        </TouchableOpacity>
-                                        {receiptBase64 && (
-                                            <Image source={{ uri: receiptBase64 }} style={styles.receiptPreview} />
-                                        )}
-                                    </>
-                                )}
-
                                 <TouchableOpacity
                                     style={[styles.submitBtn, submitting && { opacity: 0.6 }]}
                                     onPress={() => submitPayment(paymentMethod)}
@@ -375,10 +350,18 @@ function makeStyles(colors) {
             alignItems: 'center',
             justifyContent: 'space-between',
         },
-        dueInfo:   { flex: 1 },
-        dueName:   { fontSize: 14, fontFamily: F.semibold, color: colors.text },
-        dueAmount: { fontSize: 22, fontFamily: F.bold, color: colors.primary, marginTop: 2 },
-        dueSub:    { fontSize: 11, fontFamily: F.regular, color: colors.textSecondary },
+        dueInfo:    { flex: 1 },
+        dueNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+        dueName:    { fontSize: 14, fontFamily: F.semibold, color: colors.text },
+        dueAmount:  { fontSize: 22, fontFamily: F.bold, color: colors.primary, marginTop: 2 },
+        dueSub:     { fontSize: 11, fontFamily: F.regular, color: colors.textSecondary },
+        rejectedBadge: {
+            backgroundColor: '#FEE2E2',
+            borderRadius: 4,
+            paddingHorizontal: 6,
+            paddingVertical: 2,
+        },
+        rejectedBadgeText: { fontSize: 10, fontFamily: F.semibold, color: '#EF4444' },
         payBtn: {
             height: 40,
             paddingHorizontal: 18,
@@ -392,6 +375,7 @@ function makeStyles(colors) {
             shadowRadius: 6,
             elevation: 3,
         },
+        payBtnRejected: { backgroundColor: '#EF4444', shadowColor: '#EF4444' },
         payBtnText: { fontSize: 13, fontFamily: F.semibold, color: '#fff' },
         emptyBox: {
             marginHorizontal: 16,
@@ -476,20 +460,6 @@ function makeStyles(colors) {
             marginBottom: 8,
         },
         infoText: { fontSize: 14, fontFamily: F.regular, color: colors.warning, flex: 1, lineHeight: 20 },
-        uploadBtn: {
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'center',
-            height: 48,
-            borderRadius: 10,
-            borderWidth: 1.5,
-            borderStyle: 'dashed',
-            borderColor: colors.primary,
-            gap: 8,
-            marginBottom: 12,
-        },
-        uploadText:     { fontSize: 14, fontFamily: F.medium, color: colors.primary },
-        receiptPreview: { width: '100%', height: 180, borderRadius: 12, resizeMode: 'cover', marginBottom: 12 },
         submitBtn: {
             height: 56,
             borderRadius: 12,

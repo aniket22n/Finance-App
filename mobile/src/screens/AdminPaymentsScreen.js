@@ -1,24 +1,26 @@
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import {
     View, Text, ScrollView, TouchableOpacity, StyleSheet,
     ActivityIndicator, RefreshControl,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { getAdminPayments } from '../services/api';
+import { getAdminPaymentsList } from '../services/api';
 import { useTheme } from '../context/ThemeContext';
 import { F } from '../theme';
 
 const FILTERS = [
     { id: 'all',      label: 'All' },
-    { id: 'paid',     label: 'Pending' },
+    { id: 'pending',  label: 'Pending' },
     { id: 'verified', label: 'Verified' },
-    { id: 'failed',   label: 'Rejected' },
+    { id: 'rejected', label: 'Rejected' },
 ];
 
 const BADGE = {
     paid:     { bg: '#F59E0B', label: 'Pending' },
+    pending:  { bg: '#6B7280', label: 'Awaiting' },
     verified: { bg: '#10B981', label: 'Verified' },
     failed:   { bg: '#EF4444', label: 'Rejected' },
+    rejected: { bg: '#EF4444', label: 'Rejected' },
 };
 
 function timeAgo(dateStr) {
@@ -33,16 +35,23 @@ function timeAgo(dateStr) {
     return `${days} day${days > 1 ? 's' : ''} ago`;
 }
 
-export default function AdminPaymentsScreen({ navigation }) {
+export default function AdminPaymentsScreen({ navigation, route }) {
     const { colors } = useTheme();
     const [filter, setFilter]       = useState('all');
     const [payments, setPayments]   = useState([]);
     const [loading, setLoading]     = useState(true);
     const [refreshing, setRefreshing] = useState(false);
 
+    useEffect(() => {
+        const incoming = route?.params?.activeFilter;
+        if (incoming && FILTERS.some(f => f.id === incoming)) {
+            setFilter(incoming);
+        }
+    }, [route?.params?.activeFilter]);
+
     const load = async (status) => {
         try {
-            const res = await getAdminPayments(status === 'all' ? undefined : status);
+            const res = await getAdminPaymentsList(status);
             setPayments(res.data.payments || []);
         } catch (err) {
             console.log('Payments error:', err.message);

@@ -5,7 +5,7 @@ const paymentSchema = new mongoose.Schema({
     group: { type: mongoose.Schema.Types.ObjectId, ref: 'Group', required: true },
     month: { type: Number, required: true },
     amount: { type: Number, required: true },
-    status: { type: String, enum: ['pending', 'paid', 'verified', 'failed'], default: 'pending' },
+    status: { type: String, enum: ['pending', 'paid', 'verified', 'failed', 'rejected'], default: 'pending' },
     upiRef: { type: String, default: '' },
     upiTransactionId: { type: String, default: '' },
     paymentMethod: { type: String, enum: ['upi', 'bank', 'cash', 'other'], default: 'upi' },

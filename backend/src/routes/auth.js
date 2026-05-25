@@ -34,7 +34,7 @@ const userResponse = (user) => ({
 });
 
 const sendOtpToUser = async (user, phone) => {
-    const otp = config.devOtp || Math.floor(100000 + Math.random() * 900000).toString();
+    const otp = config.devOtp || Math.floor(1000 + Math.random() * 9000).toString();
     user.otp = otp;
     user.otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
     await user.save();
@@ -149,7 +149,7 @@ router.post('/send-otp', sendOtpValidations, validate, async (req, res) => {
         }
 
         // Generate OTP (use DEV_OTP in development)
-        const otp = config.devOtp || Math.floor(100000 + Math.random() * 900000).toString();
+        const otp = config.devOtp || Math.floor(1000 + Math.random() * 9000).toString();
         user.otp = otp;
         user.otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
         await user.save();
