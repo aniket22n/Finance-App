@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { View, ActivityIndicator } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { F } from '../theme';
+import { getPendingPayments } from '../services/api';
 
 // Auth screens
 import LoginScreen from '../screens/LoginScreen';
@@ -43,6 +44,22 @@ function MainTabs() {
     const { colors } = useTheme();
     const isAdmin = user?.role === 'admin';
 
+    // Admin-only: poll the pending-payments count to drive the Payments tab badge.
+    const [pendingPayments, setPendingPayments] = useState(0);
+    useEffect(() => {
+        if (!isAdmin) return;
+        let active = true;
+        const fetchCount = async () => {
+            try {
+                const r = await getPendingPayments();
+                if (active) setPendingPayments((r.data?.payments || []).length);
+            } catch { /* silent — badge just won't update this tick */ }
+        };
+        fetchCount();
+        const t = setInterval(fetchCount, 30_000);
+        return () => { active = false; clearInterval(t); };
+    }, [isAdmin]);
+
     return (
         <Tab.Navigator
             screenOptions={({ route }) => ({
@@ -58,6 +75,15 @@ function MainTabs() {
                 tabBarActiveTintColor: colors.primary,
                 tabBarInactiveTintColor: colors.textSecondary,
                 tabBarLabelStyle: { fontSize: 11 },
+                tabBarBadgeStyle: {
+                    backgroundColor: colors.error,
+                    color: '#fff',
+                    fontSize: 10,
+                    fontFamily: F.bold,
+                    minWidth: 16,
+                    height: 16,
+                    lineHeight: 14,
+                },
                 tabBarIcon: ({ focused, color }) => {
                     let iconName;
                     if (route.name === 'Home') iconName = focused ? 'home' : 'home-outline';
@@ -71,7 +97,11 @@ function MainTabs() {
         >
             <Tab.Screen name="Home" component={isAdmin ? AdminDashboardScreen : HomeScreen} />
             <Tab.Screen name="Groups" component={isAdmin ? AdminGroupsScreen : GroupListScreen} />
-            <Tab.Screen name="Payments" component={isAdmin ? AdminPaymentsScreen : PaymentScreen} />
+            <Tab.Screen
+                name="Payments"
+                component={isAdmin ? AdminPaymentsScreen : PaymentScreen}
+                options={isAdmin && pendingPayments > 0 ? { tabBarBadge: pendingPayments > 99 ? '99+' : pendingPayments } : {}}
+            />
             {isAdmin && <Tab.Screen name="Admin" component={AdminControlsScreen} />}
             <Tab.Screen name="Profile" component={ProfileScreen} />
         </Tab.Navigator>

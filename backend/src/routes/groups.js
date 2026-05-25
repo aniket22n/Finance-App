@@ -151,6 +151,9 @@ router.post('/:id/members', auth, adminOnly, addMemberValidations, validate, asy
 
         const user = await User.findById(userId);
         if (!user) return res.status(404).json({ error: 'User not found' });
+        if (user.role === 'admin') {
+            return res.status(400).json({ error: 'Admin accounts cannot be added as group members' });
+        }
 
         group.members.push(userId);
         await group.save();

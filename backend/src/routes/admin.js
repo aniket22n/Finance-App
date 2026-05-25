@@ -397,6 +397,15 @@ router.post('/account-requests/:requestId/approve', auth, adminOnly, async (req,
         request.reviewedBy = req.user._id;
         await request.save();
 
+        // In-app notification for the new user.
+        const { notifyUsers } = require('../utils/notify');
+        await notifyUsers(user._id, {
+            type: 'account_approved',
+            title: 'Account approved',
+            body: 'Your account was approved. You can now log in with your PIN.',
+            data: { userId: String(user._id) },
+        });
+
         res.json({ success: true, message: 'Account approved', user: { _id: user._id, name: user.name, phone: user.phone } });
     } catch (error) {
         res.status(500).json({ error: error.message });

@@ -119,6 +119,7 @@ export default function AdminPaymentsScreen({ navigation }) {
                 ) : (
                     payments.map(p => {
                         const badge = BADGE[p.status] || { bg: colors.border, label: p.status };
+                        const initial = (p.user?.name || p.user?.phone || '?').charAt(0).toUpperCase();
                         return (
                             <TouchableOpacity
                                 key={p._id}
@@ -126,30 +127,31 @@ export default function AdminPaymentsScreen({ navigation }) {
                                 onPress={() => navigation.navigate('AdminPaymentDetail', { payment: p })}
                                 activeOpacity={0.75}
                             >
-                                {/* Row 1: name + badge */}
-                                <View style={styles.row1}>
-                                    <Text style={styles.name} numberOfLines={1}>
-                                        {p.user?.name || p.user?.phone || 'Member'}
-                                    </Text>
-                                    <View style={[styles.badge, { backgroundColor: badge.bg }]}>
-                                        <Text style={styles.badgeText}>{badge.label}</Text>
+                                <View style={styles.cardTop}>
+                                    <View style={styles.avatar}>
+                                        <Text style={styles.avatarTxt}>{initial}</Text>
+                                    </View>
+                                    <View style={styles.info}>
+                                        <View style={styles.nameRow}>
+                                            <Text style={styles.name} numberOfLines={1}>
+                                                {p.user?.name || p.user?.phone || 'Member'}
+                                            </Text>
+                                            <View style={[styles.badge, { backgroundColor: badge.bg }]}>
+                                                <Text style={styles.badgeText}>{badge.label}</Text>
+                                            </View>
+                                        </View>
+                                        <Text style={styles.metaLine} numberOfLines={1}>
+                                            <Text style={styles.amountEmph}>₹{p.amount?.toLocaleString()}</Text>
+                                            <Text style={styles.metaDot}>  ·  </Text>
+                                            {(p.paymentMethod || 'upi').toUpperCase()}
+                                            <Text style={styles.metaDot}>  ·  </Text>
+                                            {timeAgo(p.paidAt || p.createdAt)}
+                                        </Text>
+                                        {p.group?.name ? (
+                                            <Text style={styles.group} numberOfLines={1}>{p.group.name}</Text>
+                                        ) : null}
                                     </View>
                                 </View>
-
-                                {/* Row 2: amount + method */}
-                                <Text style={styles.amountRow}>
-                                    ₹{p.amount?.toLocaleString()} • {p.paymentMethod?.toUpperCase() || 'UPI'}
-                                </Text>
-
-                                {/* Row 3: time */}
-                                <Text style={styles.time}>
-                                    {timeAgo(p.paidAt || p.createdAt)}
-                                </Text>
-
-                                {/* Row 4: group */}
-                                {p.group?.name ? (
-                                    <Text style={styles.group} numberOfLines={1}>{p.group.name}</Text>
-                                ) : null}
                             </TouchableOpacity>
                         );
                     })
@@ -215,30 +217,28 @@ function makeStyles(colors) {
         },
         emptyText: { fontSize: 13, fontFamily: F.regular, color: colors.textSecondary },
 
-        // Card
+        // Card (compact)
         card: {
             backgroundColor: colors.backgroundSecondary,
-            borderWidth: 1,
-            borderColor: colors.border,
-            borderRadius: 12,
-            padding: 12,
-            marginBottom: 8,
+            borderWidth: 1, borderColor: colors.border, borderRadius: 10,
+            paddingVertical: 8, paddingHorizontal: 10, marginBottom: 6,
         },
-        row1: {
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            marginBottom: 4,
+        cardTop: { flexDirection: 'row', alignItems: 'center' },
+        avatar: {
+            width: 34, height: 34, borderRadius: 17,
+            backgroundColor: colors.primaryLight,
+            alignItems: 'center', justifyContent: 'center',
+            marginRight: 10, borderWidth: 1, borderColor: colors.border,
         },
-        name:       { fontSize: 14, fontFamily: F.bold, color: colors.text, flex: 1, marginRight: 8 },
-        badge: {
-            paddingHorizontal: 8,
-            paddingVertical: 4,
-            borderRadius: 6,
-        },
-        badgeText:  { fontSize: 11, fontFamily: F.bold, color: '#fff' },
-        amountRow:  { fontSize: 13, fontFamily: F.regular, color: colors.textSecondary, marginBottom: 3 },
-        time:       { fontSize: 12, fontFamily: F.regular, color: colors.textTertiary, marginBottom: 3 },
-        group:      { fontSize: 12, fontFamily: F.medium, color: colors.primary },
+        avatarTxt:  { fontSize: 13, fontFamily: F.bold, color: colors.primary },
+        info:       { flex: 1, minWidth: 0 },
+        nameRow:    { flexDirection: 'row', alignItems: 'center', gap: 6 },
+        name:       { flex: 1, fontSize: 13, fontFamily: F.bold, color: colors.text },
+        badge:      { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5 },
+        badgeText:  { fontSize: 9, fontFamily: F.bold, color: '#fff', letterSpacing: 0.3 },
+        metaLine:   { fontSize: 11, fontFamily: F.regular, color: colors.textSecondary, marginTop: 2 },
+        amountEmph: { fontFamily: F.bold, color: colors.text },
+        metaDot:    { color: colors.textTertiary },
+        group:      { fontSize: 11, fontFamily: F.medium, color: colors.primary, marginTop: 1 },
     });
 }

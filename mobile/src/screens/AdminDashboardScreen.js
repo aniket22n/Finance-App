@@ -16,8 +16,9 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
-import { getAdminDashboard, getPendingAccountRequests } from '../services/api';
+import { getAdminDashboard } from '../services/api';
 import { F } from '../theme';
+import NotificationsBell from '../components/NotificationsBell';
 
 const W = Dimensions.get('window').width;
 // card: marginHorizontal 12 each side + card padding 12 each side = 48 total
@@ -90,8 +91,6 @@ export default function AdminDashboardScreen({ navigation }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
-
   const now = new Date();
   // getUTCHours + timezone offset gives reliable 24-hour local time
   // regardless of the device's 12/24-hour display setting
@@ -105,12 +104,8 @@ export default function AdminDashboardScreen({ navigation }) {
 
   const loadData = async () => {
     try {
-      const [dashRes, requestsRes] = await Promise.all([
-        getAdminDashboard(),
-        getPendingAccountRequests(),
-      ]);
+      const dashRes = await getAdminDashboard();
       setData(dashRes.data);
-      setPendingRequestsCount(requestsRes.data.requests?.length || 0);
     } catch (err) {
       console.log('Dashboard error:', err.message);
     } finally {
@@ -205,13 +200,7 @@ export default function AdminDashboardScreen({ navigation }) {
           <Text style={styles.greeting}>{greeting}, Admin</Text>
           <Text style={styles.headerTitle}>DASHBOARD</Text>
         </View>
-        <TouchableOpacity hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <Ionicons
-            name="notifications-outline"
-            size={22}
-            color={colors.text}
-          />
-        </TouchableOpacity>
+        <NotificationsBell />
       </View>
 
       <ScrollView
@@ -290,33 +279,6 @@ export default function AdminDashboardScreen({ navigation }) {
             </View>
           </View>
         </View>
-
-        {/* Account Requests Banner */}
-        <TouchableOpacity
-          style={styles.requestsBanner}
-          onPress={() => navigation.navigate('AdminAccountRequests')}
-          activeOpacity={0.8}
-        >
-          <View style={styles.requestsBannerLeft}>
-            <Ionicons name="document-text-outline" size={20} color={colors.primary} />
-            <View style={{ marginLeft: 10 }}>
-              <Text style={styles.requestsBannerTitle}>Account Requests</Text>
-              <Text style={styles.requestsBannerSub}>
-                {pendingRequestsCount > 0
-                  ? `${pendingRequestsCount} pending approval`
-                  : 'No pending requests'}
-              </Text>
-            </View>
-          </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            {pendingRequestsCount > 0 && (
-              <View style={styles.requestsBadge}>
-                <Text style={styles.requestsBadgeText}>{pendingRequestsCount}</Text>
-              </View>
-            )}
-            <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
-          </View>
-        </TouchableOpacity>
       </ScrollView>
     </View>
   );
@@ -438,29 +400,5 @@ function makeStyles(colors) {
       color: colors.textSecondary,
     },
     legendPct: { fontSize: 12, fontFamily: F.semibold, color: colors.text },
-
-    // Account requests banner
-    requestsBanner: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      backgroundColor: colors.backgroundSecondary,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 12,
-      marginHorizontal: 12,
-      marginBottom: 8,
-      paddingVertical: 12,
-      paddingHorizontal: 14,
-    },
-    requestsBannerLeft:  { flexDirection: 'row', alignItems: 'center', flex: 1 },
-    requestsBannerTitle: { fontSize: 14, fontFamily: F.semibold, color: colors.text },
-    requestsBannerSub:   { fontSize: 12, fontFamily: F.regular, color: colors.textSecondary, marginTop: 1 },
-    requestsBadge: {
-      backgroundColor: '#F59E0B',
-      minWidth: 22, height: 22, borderRadius: 11,
-      alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6,
-    },
-    requestsBadgeText: { fontSize: 11, fontFamily: F.bold, color: '#fff' },
   });
 }

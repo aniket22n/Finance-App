@@ -185,39 +185,38 @@ export default function AdminAccountRequestsScreen({ navigation }) {
                     </View>
                 ) : (
                     requests.map(r => {
-                        const badge = BADGE[r.status] || { bg: colors.border, label: r.status };
-                        const isBusy = actionBusy === r._id;
+                        const badge   = BADGE[r.status] || { bg: colors.border, label: r.status };
+                        const isBusy  = actionBusy === r._id;
+                        const initial = (r.name || r.phone || '?').charAt(0).toUpperCase();
+                        const isPending = r.status === 'pending';
                         return (
                             <View key={r._id} style={styles.card}>
-                                {/* Row 1: name + badge */}
-                                <View style={styles.row1}>
-                                    <Text style={styles.name} numberOfLines={1}>{r.name}</Text>
-                                    <View style={[styles.badge, { backgroundColor: badge.bg }]}>
-                                        <Text style={styles.badgeText}>{badge.label}</Text>
+                                <View style={styles.cardTop}>
+                                    <View style={styles.avatar}>
+                                        <Text style={styles.avatarTxt}>{initial}</Text>
+                                    </View>
+                                    <View style={styles.info}>
+                                        <View style={styles.nameRow}>
+                                            <Text style={styles.name} numberOfLines={1}>{r.name}</Text>
+                                            <View style={[styles.badge, { backgroundColor: badge.bg }]}>
+                                                <Text style={styles.badgeText}>{badge.label}</Text>
+                                            </View>
+                                        </View>
+                                        <Text style={styles.metaLine} numberOfLines={1}>
+                                            +91 {r.phone}
+                                            <Text style={styles.metaDot}>  ·  </Text>
+                                            {timeAgo(r.createdAt)}
+                                        </Text>
+                                        {!isPending && r.reviewedAt ? (
+                                            <Text style={styles.reviewed} numberOfLines={1}>
+                                                {r.status === 'approved' ? 'Approved' : 'Rejected'} {timeAgo(r.reviewedAt)}
+                                                {r.reviewedBy?.name ? ` by ${r.reviewedBy.name}` : ''}
+                                            </Text>
+                                        ) : null}
                                     </View>
                                 </View>
 
-                                {/* Row 2: phone */}
-                                <Text style={styles.phone}>+91 {r.phone}</Text>
-
-                                {/* Row 3: created time */}
-                                <Text style={styles.time}>{timeAgo(r.createdAt)}</Text>
-
-                                {/* Row 4: reject reason (if rejected) */}
-                                {r.status === 'rejected' && r.rejectReason ? (
-                                    <Text style={styles.reason}>Reason: {r.rejectReason}</Text>
-                                ) : null}
-
-                                {/* Row 5: reviewed by (if reviewed) */}
-                                {r.status !== 'pending' && r.reviewedAt ? (
-                                    <Text style={styles.reviewed}>
-                                        {r.status === 'approved' ? 'Approved' : 'Rejected'} {timeAgo(r.reviewedAt)}
-                                        {r.reviewedBy?.name ? ` by ${r.reviewedBy.name}` : ''}
-                                    </Text>
-                                ) : null}
-
-                                {/* Action buttons — pending only */}
-                                {r.status === 'pending' && (
+                                {isPending && (
                                     <View style={styles.actions}>
                                         <TouchableOpacity
                                             style={[styles.approveBtn, isBusy && styles.btnDisabled]}
@@ -227,7 +226,7 @@ export default function AdminAccountRequestsScreen({ navigation }) {
                                         >
                                             {isBusy
                                                 ? <ActivityIndicator color="#fff" size="small" />
-                                                : <><Ionicons name="checkmark" size={14} color="#fff" /><Text style={styles.approveBtnText}>Approve</Text></>
+                                                : <><Ionicons name="checkmark" size={13} color="#fff" /><Text style={styles.approveBtnText}>Approve</Text></>
                                             }
                                         </TouchableOpacity>
                                         <TouchableOpacity
@@ -236,7 +235,7 @@ export default function AdminAccountRequestsScreen({ navigation }) {
                                             disabled={!!actionBusy}
                                             activeOpacity={0.8}
                                         >
-                                            <Ionicons name="close" size={14} color="#fff" />
+                                            <Ionicons name="close" size={13} color="#fff" />
                                             <Text style={styles.rejectBtnText}>Reject</Text>
                                         </TouchableOpacity>
                                     </View>
@@ -335,37 +334,42 @@ function makeStyles(colors) {
         },
         emptyText: { fontSize: 13, fontFamily: F.regular, color: colors.textSecondary },
 
-        // Card
+        // Card (compact)
         card: {
             backgroundColor: colors.backgroundSecondary,
-            borderWidth: 1, borderColor: colors.border, borderRadius: 12,
-            padding: 12, marginBottom: 8,
+            borderWidth: 1, borderColor: colors.border, borderRadius: 10,
+            paddingVertical: 8, paddingHorizontal: 10, marginBottom: 6,
         },
-        row1: {
-            flexDirection: 'row', alignItems: 'center',
-            justifyContent: 'space-between', marginBottom: 4,
+        cardTop:  { flexDirection: 'row', alignItems: 'center' },
+        avatar: {
+            width: 34, height: 34, borderRadius: 17,
+            backgroundColor: colors.primaryLight,
+            alignItems: 'center', justifyContent: 'center',
+            marginRight: 10, borderWidth: 1, borderColor: colors.border,
         },
-        name:   { fontSize: 14, fontFamily: F.bold, color: colors.text, flex: 1, marginRight: 8 },
-        badge:  { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
-        badgeText: { fontSize: 11, fontFamily: F.bold, color: '#fff' },
-        phone:    { fontSize: 12, fontFamily: F.regular, color: colors.textSecondary, marginBottom: 2 },
-        time:     { fontSize: 12, fontFamily: F.regular, color: colors.textTertiary, marginBottom: 4 },
-        reason:   { fontSize: 11, fontFamily: F.regular, color: '#EF4444', marginBottom: 2 },
-        reviewed: { fontSize: 11, fontFamily: F.regular, color: colors.textTertiary },
+        avatarTxt: { fontSize: 13, fontFamily: F.bold, color: colors.primary },
+        info:      { flex: 1, minWidth: 0 },
+        nameRow:   { flexDirection: 'row', alignItems: 'center', gap: 6 },
+        name:      { flex: 1, fontSize: 13, fontFamily: F.bold, color: colors.text },
+        badge:     { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5 },
+        badgeText: { fontSize: 9,  fontFamily: F.bold, color: '#fff', letterSpacing: 0.3 },
+        metaLine:  { fontSize: 11, fontFamily: F.regular, color: colors.textSecondary, marginTop: 2 },
+        metaDot:   { color: colors.textTertiary },
+        reviewed:  { fontSize: 10, fontFamily: F.regular, color: colors.textTertiary, marginTop: 1 },
 
-        // Action buttons
-        actions: { flexDirection: 'row', gap: 8, marginTop: 10 },
+        // Action buttons (compact)
+        actions: { flexDirection: 'row', gap: 6, marginTop: 8 },
         approveBtn: {
-            flex: 1, height: 34, backgroundColor: '#10B981', borderRadius: 8,
-            flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
+            flex: 1, height: 30, backgroundColor: '#10B981', borderRadius: 7,
+            flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 3,
         },
         rejectBtn: {
-            flex: 1, height: 34, backgroundColor: '#EF4444', borderRadius: 8,
-            flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
+            flex: 1, height: 30, backgroundColor: '#EF4444', borderRadius: 7,
+            flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 3,
         },
-        btnDisabled:     { opacity: 0.5 },
-        approveBtnText:  { fontSize: 12, fontFamily: F.semibold, color: '#fff' },
-        rejectBtnText:   { fontSize: 12, fontFamily: F.semibold, color: '#fff' },
+        btnDisabled:    { opacity: 0.5 },
+        approveBtnText: { fontSize: 11, fontFamily: F.semibold, color: '#fff' },
+        rejectBtnText:  { fontSize: 11, fontFamily: F.semibold, color: '#fff' },
 
         // Reject modal
         modalOverlay: {

@@ -32,7 +32,10 @@ export default function AdminAddMembersScreen({ route, navigation }) {
                 getAdminUsers(),
             ]);
             setGroup(groupRes.data.group);
-            setUsers(usersRes.data.users || []);
+            // Admins can never be group members — strip them from the picker so they
+            // don't even appear as an option.
+            const allUsers = usersRes.data.users || [];
+            setUsers(allUsers.filter(u => u.role !== 'admin'));
         } catch (err) {
             const raw = err?.response?.data?.error || err?.response?.data?.message || err?.message;
             const msg = (typeof raw === 'string' && raw) || 'Failed to load users';

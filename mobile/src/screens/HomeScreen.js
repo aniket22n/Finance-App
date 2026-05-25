@@ -11,6 +11,7 @@ import { useTheme } from '../context/ThemeContext';
 import { getGroups, getAdminDashboard, getGroupHealth } from '../services/api';
 import Avatar from '../components/Avatar';
 import GroupCard from '../components/GroupCard';
+import NotificationsBell from '../components/NotificationsBell';
 import { F } from '../theme';
 
 // ── Admin Home ───────────────────────────────────────────────────────────────
@@ -164,9 +165,12 @@ function MemberHomeView({ navigation, user, colors }) {
                     <Text style={styles.greeting}>Hi,</Text>
                     <Text style={styles.name}>{user?.name || 'Member'} 👋</Text>
                 </View>
-                <TouchableOpacity onPress={() => navigation.navigate('Profile')}>
-                    <Avatar uri={user?.avatar} name={user?.name} size={46} />
-                </TouchableOpacity>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+                    <NotificationsBell />
+                    <TouchableOpacity onPress={() => navigation.navigate('Profile')}>
+                        <Avatar uri={user?.avatar} name={user?.name} size={46} />
+                    </TouchableOpacity>
+                </View>
             </View>
 
             <ScrollView
@@ -196,7 +200,6 @@ function MemberHomeView({ navigation, user, colors }) {
                 <QuickAction icon="people" label="Groups" onPress={() => navigation.navigate('Groups')} colors={colors} />
                 <QuickAction icon="card" label="Pay EMI" onPress={() => navigation.navigate('Payments')} colors={colors} />
                 <QuickAction icon="person" label="Profile" onPress={() => navigation.navigate('Profile')} colors={colors} />
-                <QuickAction icon="notifications-outline" label="Alerts" onPress={() => {}} colors={colors} />
             </View>
 
             {/* Active Groups Horizontal Scroll */}

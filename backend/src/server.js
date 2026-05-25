@@ -19,6 +19,7 @@ const groupRoutes = require('./routes/groups');
 const paymentRoutes = require('./routes/payments');
 const emiRoutes = require('./routes/emi');
 const adminRoutes = require('./routes/admin');
+const notificationsRoutes = require('./routes/notifications');
 
 const app = express();
 
@@ -47,6 +48,7 @@ app.use('/api/groups', groupRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/emi', emiRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/notifications', notificationsRoutes);
 
 // 404 handler
 app.use((req, res) => {

@@ -469,12 +469,21 @@ router.post('/signup-with-pin', signupWithPinValidations, validate, async (req, 
         // Delete temp User (created only for OTP)
         await User.deleteOne({ _id: tempUser._id });
 
-        // Notify admins
-        const admins = await User.find({ role: 'admin', expoPushToken: { $ne: '' } }).lean();
+        // Notify admins — push (best-effort) + in-app bell notification
+        const admins = await User.find({ role: 'admin' }).select('_id expoPushToken').lean();
         if (admins.length > 0) {
             const { sendBulkNotifications } = require('../utils/notifications');
+            const { notifyUsers } = require('../utils/notify');
             const tokens = admins.map(a => a.expoPushToken).filter(Boolean);
-            sendBulkNotifications(tokens, 'New Account Request', `${request.name} (${phone}) wants to join`, { type: 'new_request', requestId: String(request._id) }).catch(() => {});
+            const title = 'New Account Request';
+            const bodyText = `${request.name} (${phone}) wants to join`;
+            if (tokens.length > 0) sendBulkNotifications(tokens, title, bodyText, { type: 'new_request', requestId: String(request._id) }).catch(() => {});
+            notifyUsers(admins.map(a => a._id), {
+                type: 'account_request',
+                title,
+                body: bodyText,
+                data: { requestId: String(request._id), phone },
+            });
         }
 
         res.json({
