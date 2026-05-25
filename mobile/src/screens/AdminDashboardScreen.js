@@ -171,7 +171,10 @@ export default function AdminDashboardScreen({ navigation }) {
     { label: 'All Groups', value: 'all' },
     ...groups.map(g => ({ label: g.name, value: g._id })),
   ];
-  const maxMonth = groups.length > 0 ? Math.max(...groups.map(g => g.totalMonths || 0)) : 24;
+  const activeGroup = groups.find(g => g._id === selectedGroup);
+  const maxMonth = activeGroup
+    ? (activeGroup.totalMonths || 24)
+    : groups.length > 0 ? Math.max(...groups.map(g => g.totalMonths || 0)) : 24;
   const monthOptions = [
     { label: 'All Months', value: 'all' },
     ...Array.from({ length: maxMonth }, (_, i) => ({ label: `Month ${i + 1}`, value: i + 1 })),

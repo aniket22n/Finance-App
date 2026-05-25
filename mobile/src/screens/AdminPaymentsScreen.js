@@ -188,8 +188,10 @@ export default function AdminPaymentsScreen({ navigation, route }) {
         if (activeFilter !== undefined) {
             if (activeFilter === 'all') {
                 setStatuses(['all']);
+            } else if (activeFilter === 'pending') {
+                setStatuses(['awaiting', 'pending', 'rejected']);
             } else {
-                const map = { pending: 'awaiting', verified: 'verified', rejected: 'rejected', awaiting: 'awaiting' };
+                const map = { verified: 'verified', rejected: 'rejected', awaiting: 'awaiting' };
                 const mapped = map[activeFilter] || activeFilter;
                 if (STATUS_OPTIONS.some(o => o.id === mapped)) setStatuses([mapped]);
             }
@@ -231,7 +233,10 @@ export default function AdminPaymentsScreen({ navigation, route }) {
         { value: 'all', label: 'All Groups' },
         ...groups.map(g => ({ value: g._id, label: g.name })),
     ];
-    const maxMonth = groups.length > 0 ? Math.max(...groups.map(g => g.totalMonths || 0)) : 24;
+    const activeGroup = groups.find(g => g._id === groupId);
+    const maxMonth = activeGroup
+        ? (activeGroup.totalMonths || 24)
+        : groups.length > 0 ? Math.max(...groups.map(g => g.totalMonths || 0)) : 24;
     const monthItems = [
         { value: 'all', label: 'All Months' },
         ...Array.from({ length: maxMonth }, (_, i) => ({ value: i + 1, label: `Month ${i + 1}` })),
