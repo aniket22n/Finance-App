@@ -320,7 +320,7 @@ export default function AdminPaymentsScreen({ navigation, route }) {
                 anchor={statusAnchor}
                 statuses={statuses}
                 onToggle={toggleStatus}
-                onClose={() => { setStatusModal(false); setLoading(true); }}
+                onClose={() => setStatusModal(false)}
                 colors={colors} styles={styles}
             />
             <PickerModal
@@ -328,7 +328,7 @@ export default function AdminPaymentsScreen({ navigation, route }) {
                 title="Filter by Group"
                 items={groupItems}
                 selected={groupId}
-                onSelect={(id) => { setGroupId(id); setLoading(true); }}
+                onSelect={(id) => setGroupId(id)}
                 onClose={() => setGroupModal(false)}
                 colors={colors} styles={styles}
             />
@@ -337,7 +337,7 @@ export default function AdminPaymentsScreen({ navigation, route }) {
                 title="Filter by Month"
                 items={monthItems}
                 selected={month}
-                onSelect={(id) => { setMonth(id); setLoading(true); }}
+                onSelect={(id) => setMonth(id)}
                 onClose={() => setMonthModal(false)}
                 colors={colors} styles={styles}
             />
