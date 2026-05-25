@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react';
 import {
     View, Text, ScrollView, TouchableOpacity, StyleSheet,
-    ActivityIndicator, RefreshControl, Modal, FlatList,
+    ActivityIndicator, RefreshControl, Modal,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -10,11 +10,11 @@ import { useTheme } from '../context/ThemeContext';
 import { F } from '../theme';
 
 const STATUS_OPTIONS = [
-    { id: 'all',      label: 'All'      },
-    { id: 'awaiting', label: 'Awaiting' },
-    { id: 'pending',  label: 'Pending'  },
-    { id: 'verified', label: 'Verified' },
-    { id: 'rejected', label: 'Rejected' },
+    { id: 'all',      label: 'All',      dot: null        },
+    { id: 'awaiting', label: 'Awaiting', dot: '#F59E0B'   },
+    { id: 'pending',  label: 'Pending',  dot: '#6B7280'   },
+    { id: 'verified', label: 'Verified', dot: '#10B981'   },
+    { id: 'rejected', label: 'Rejected', dot: '#EF4444'   },
 ];
 
 const BADGE = {
@@ -36,71 +36,112 @@ function timeAgo(dateStr) {
     return `${Math.floor(hrs / 24)}d ago`;
 }
 
-function PickerModal({ visible, title, items, selected, onSelect, onClose, colors, styles }) {
+// Unified dropdown for all three chips
+function DropdownMenu({ visible, anchor, items, multiSelect, selected, onToggle, onSelect, onClose, colors }) {
+    if (!visible || !anchor) return null;
+
+    const styles = ddStyles(colors);
+
+    // Clamp so dropdown never goes off right edge (screen width ~360–420)
+    const dropW = Math.max(anchor.w, 160);
+    const clampLeft = Math.min(anchor.x, 360 - dropW - 8);
+
     return (
-        <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-            <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onClose} />
-            <View style={styles.sheet}>
-                <View style={styles.handle} />
-                <Text style={styles.sheetTitle}>{title}</Text>
-                <FlatList
-                    data={items}
-                    keyExtractor={i => String(i.id)}
-                    style={{ maxHeight: 380 }}
-                    renderItem={({ item }) => (
+        <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+            <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onClose} />
+            <View style={[styles.card, { top: anchor.y + anchor.h + 6, left: clampLeft, minWidth: dropW }]}>
+                {items.map((item, idx) => {
+                    const isActive = multiSelect
+                        ? (item.id === 'all' ? selected.includes('all') : selected.includes(item.id))
+                        : selected === item.id;
+                    const isLast = idx === items.length - 1;
+
+                    return (
                         <TouchableOpacity
-                            style={styles.sheetRow}
-                            onPress={() => { onSelect(item.id); onClose(); }}
-                            activeOpacity={0.7}
+                            key={item.id}
+                            style={[styles.row, isLast && styles.rowLast]}
+                            onPress={() => {
+                                if (multiSelect) {
+                                    onToggle(item.id);
+                                } else {
+                                    onSelect(item.id);
+                                    onClose();
+                                }
+                            }}
+                            activeOpacity={0.65}
                         >
-                            <Text style={[
-                                styles.sheetRowText,
-                                item.id === selected && { color: colors.primary, fontFamily: F.semibold },
-                            ]}>
-                                {item.label}
-                            </Text>
-                            {item.id === selected &&
-                                <Ionicons name="checkmark" size={16} color={colors.primary} />}
+                            <View style={styles.rowLeft}>
+                                {item.dot !== undefined ? (
+                                    <View style={[
+                                        styles.dot,
+                                        { backgroundColor: item.dot || colors.border },
+                                    ]} />
+                                ) : null}
+                                <Text style={[styles.label, isActive && { color: colors.primary, fontFamily: F.semibold }]}>
+                                    {item.label}
+                                </Text>
+                            </View>
+                            {multiSelect ? (
+                                <View style={[styles.check, isActive && { backgroundColor: colors.primary, borderColor: colors.primary }]}>
+                                    {isActive && <Ionicons name="checkmark" size={10} color="#fff" />}
+                                </View>
+                            ) : (
+                                isActive && <Ionicons name="checkmark" size={15} color={colors.primary} />
+                            )}
                         </TouchableOpacity>
-                    )}
-                />
+                    );
+                })}
+                {multiSelect && (
+                    <TouchableOpacity style={styles.doneRow} onPress={onClose} activeOpacity={0.75}>
+                        <Text style={styles.doneTxt}>Done</Text>
+                    </TouchableOpacity>
+                )}
             </View>
         </Modal>
     );
 }
 
-function StatusDropdown({ visible, anchor, statuses, onToggle, onClose, colors, styles }) {
-    if (!visible || !anchor) return null;
-    return (
-        <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-            <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onClose} />
-            <View style={[styles.dropdown, { top: anchor.y + anchor.h + 4, left: anchor.x, width: anchor.w }]}>
-                {STATUS_OPTIONS.map(opt => {
-                    const active = opt.id === 'all'
-                        ? statuses.includes('all')
-                        : statuses.includes(opt.id);
-                    return (
-                        <TouchableOpacity
-                            key={opt.id}
-                            style={styles.dropRow}
-                            onPress={() => onToggle(opt.id)}
-                            activeOpacity={0.7}
-                        >
-                            <Text style={[styles.dropTxt, active && { color: colors.primary, fontFamily: F.semibold }]}>
-                                {opt.label}
-                            </Text>
-                            <View style={[styles.checkbox, active && { backgroundColor: colors.primary, borderColor: colors.primary }]}>
-                                {active && <Ionicons name="checkmark" size={11} color="#fff" />}
-                            </View>
-                        </TouchableOpacity>
-                    );
-                })}
-                <TouchableOpacity style={styles.dropDone} onPress={onClose} activeOpacity={0.85}>
-                    <Text style={styles.dropDoneTxt}>Done</Text>
-                </TouchableOpacity>
-            </View>
-        </Modal>
-    );
+function ddStyles(colors) {
+    return StyleSheet.create({
+        card: {
+            position: 'absolute',
+            backgroundColor: colors.backgroundSecondary,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: colors.border,
+            elevation: 12,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 6 },
+            shadowOpacity: 0.22,
+            shadowRadius: 12,
+            overflow: 'hidden',
+        },
+        row: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            paddingHorizontal: 14,
+            paddingVertical: 12,
+            borderBottomWidth: StyleSheet.hairlineWidth,
+            borderBottomColor: colors.border,
+        },
+        rowLast: { borderBottomWidth: 0 },
+        rowLeft: { flexDirection: 'row', alignItems: 'center', gap: 9, flex: 1 },
+        dot: { width: 8, height: 8, borderRadius: 4 },
+        label: { fontSize: 13, fontFamily: F.medium, color: colors.text },
+        check: {
+            width: 17, height: 17, borderRadius: 4,
+            borderWidth: 1.5, borderColor: colors.border,
+            alignItems: 'center', justifyContent: 'center',
+        },
+        doneRow: {
+            paddingVertical: 11,
+            alignItems: 'center',
+            borderTopWidth: StyleSheet.hairlineWidth,
+            borderTopColor: colors.border,
+        },
+        doneTxt: { fontSize: 13, fontFamily: F.semibold, color: colors.primary },
+    });
 }
 
 export default function AdminPaymentsScreen({ navigation, route }) {
@@ -115,11 +156,14 @@ export default function AdminPaymentsScreen({ navigation, route }) {
     const [loading,    setLoading]    = useState(true);
     const [refreshing, setRefreshing] = useState(false);
 
-    const [statusModal, setStatusModal] = useState(false);
-    const [groupModal,  setGroupModal]  = useState(false);
-    const [monthModal,  setMonthModal]  = useState(false);
-    const [statusAnchor, setStatusAnchor] = useState(null);
-    const statusBtnRef = useRef(null);
+    const [openDD,  setOpenDD]  = useState(null); // 'status' | 'group' | 'month' | null
+    const [anchors, setAnchors] = useState({});
+
+    const statusRef = useRef(null);
+    const groupRef  = useRef(null);
+    const monthRef  = useRef(null);
+
+    const refs = { status: statusRef, group: groupRef, month: monthRef };
 
     useEffect(() => {
         const incoming = route?.params?.activeFilter;
@@ -149,6 +193,15 @@ export default function AdminPaymentsScreen({ navigation, route }) {
 
     const onRefresh = () => { setRefreshing(true); load(); };
 
+    const openDropdown = (key) => {
+        refs[key].current?.measure((_fx, _fy, w, h, px, py) => {
+            setAnchors(prev => ({ ...prev, [key]: { x: px, y: py, w, h } }));
+            setOpenDD(key);
+        });
+    };
+
+    const closeDD = () => setOpenDD(null);
+
     const toggleStatus = (id) => {
         setStatuses(prev => {
             if (id === 'all') return ['all'];
@@ -169,9 +222,9 @@ export default function AdminPaymentsScreen({ navigation, route }) {
         ...Array.from({ length: maxMonth }, (_, i) => ({ id: i + 1, label: `Month ${i + 1}` })),
     ];
 
-    const isAllStatus   = statuses.includes('all');
+    const isAllStatus    = statuses.includes('all');
     const hasGroupFilter = groupId !== 'all';
-    const hasMonthFilter = month   !== 'all';
+    const hasMonthFilter = month !== 'all';
 
     const statusLabel = isAllStatus
         ? 'Status'
@@ -185,13 +238,6 @@ export default function AdminPaymentsScreen({ navigation, route }) {
         ? (monthItems.find(m => m.id === month)?.label || 'Month')
         : 'Month';
 
-    const openStatusDropdown = () => {
-        statusBtnRef.current?.measure((_fx, _fy, width, height, pageX, pageY) => {
-            setStatusAnchor({ x: pageX, y: pageY, w: width, h: height });
-            setStatusModal(true);
-        });
-    };
-
     const styles = useMemo(() => makeStyles(colors), [colors]);
 
     return (
@@ -200,60 +246,57 @@ export default function AdminPaymentsScreen({ navigation, route }) {
                 <Text style={styles.title}>Payments</Text>
             </View>
 
-            {/* ── Three filter chips in one row ── */}
+            {/* ── Three filter chips ── */}
             <View style={styles.filterRow}>
                 <TouchableOpacity
-                    ref={statusBtnRef}
+                    ref={statusRef}
                     style={[styles.chip, !isAllStatus && styles.chipActive]}
-                    onPress={openStatusDropdown}
+                    onPress={() => openDropdown('status')}
                     activeOpacity={0.75}
                 >
-                    <Ionicons
-                        name="funnel-outline" size={13}
-                        color={!isAllStatus ? colors.primary : colors.textSecondary}
-                    />
-                    <Text
-                        style={[styles.chipTxt, !isAllStatus && styles.chipTxtActive]}
-                        numberOfLines={1}
-                    >
+                    <Ionicons name="funnel-outline" size={13}
+                        color={!isAllStatus ? colors.primary : colors.textSecondary} />
+                    <Text style={[styles.chipTxt, !isAllStatus && styles.chipTxtActive]} numberOfLines={1}>
                         {statusLabel}
                     </Text>
-                    <Ionicons name="chevron-down" size={11}
-                        color={!isAllStatus ? colors.primary : colors.textSecondary} />
+                    <Ionicons
+                        name={openDD === 'status' ? 'chevron-up' : 'chevron-down'}
+                        size={11} color={!isAllStatus ? colors.primary : colors.textSecondary}
+                    />
                 </TouchableOpacity>
 
                 <TouchableOpacity
+                    ref={groupRef}
                     style={[styles.chip, hasGroupFilter && styles.chipActive]}
-                    onPress={() => setGroupModal(true)}
+                    onPress={() => openDropdown('group')}
                     activeOpacity={0.75}
                 >
                     <Ionicons name="people-outline" size={13}
                         color={hasGroupFilter ? colors.primary : colors.textSecondary} />
-                    <Text
-                        style={[styles.chipTxt, hasGroupFilter && styles.chipTxtActive]}
-                        numberOfLines={1}
-                    >
+                    <Text style={[styles.chipTxt, hasGroupFilter && styles.chipTxtActive]} numberOfLines={1}>
                         {groupLabel}
                     </Text>
-                    <Ionicons name="chevron-down" size={11}
-                        color={hasGroupFilter ? colors.primary : colors.textSecondary} />
+                    <Ionicons
+                        name={openDD === 'group' ? 'chevron-up' : 'chevron-down'}
+                        size={11} color={hasGroupFilter ? colors.primary : colors.textSecondary}
+                    />
                 </TouchableOpacity>
 
                 <TouchableOpacity
+                    ref={monthRef}
                     style={[styles.chip, hasMonthFilter && styles.chipActive]}
-                    onPress={() => setMonthModal(true)}
+                    onPress={() => openDropdown('month')}
                     activeOpacity={0.75}
                 >
                     <Ionicons name="calendar-outline" size={13}
                         color={hasMonthFilter ? colors.primary : colors.textSecondary} />
-                    <Text
-                        style={[styles.chipTxt, hasMonthFilter && styles.chipTxtActive]}
-                        numberOfLines={1}
-                    >
+                    <Text style={[styles.chipTxt, hasMonthFilter && styles.chipTxtActive]} numberOfLines={1}>
                         {monthLabel}
                     </Text>
-                    <Ionicons name="chevron-down" size={11}
-                        color={hasMonthFilter ? colors.primary : colors.textSecondary} />
+                    <Ionicons
+                        name={openDD === 'month' ? 'chevron-up' : 'chevron-down'}
+                        size={11} color={hasMonthFilter ? colors.primary : colors.textSecondary}
+                    />
                 </TouchableOpacity>
             </View>
 
@@ -315,31 +358,40 @@ export default function AdminPaymentsScreen({ navigation, route }) {
                 )}
             </ScrollView>
 
-            <StatusDropdown
-                visible={statusModal}
-                anchor={statusAnchor}
-                statuses={statuses}
+            {/* Status dropdown — multi-select */}
+            <DropdownMenu
+                visible={openDD === 'status'}
+                anchor={anchors.status}
+                items={STATUS_OPTIONS}
+                multiSelect
+                selected={statuses}
                 onToggle={toggleStatus}
-                onClose={() => setStatusModal(false)}
-                colors={colors} styles={styles}
+                onClose={closeDD}
+                colors={colors}
             />
-            <PickerModal
-                visible={groupModal}
-                title="Filter by Group"
+
+            {/* Group dropdown — single select */}
+            <DropdownMenu
+                visible={openDD === 'group'}
+                anchor={anchors.group}
                 items={groupItems}
+                multiSelect={false}
                 selected={groupId}
-                onSelect={(id) => setGroupId(id)}
-                onClose={() => setGroupModal(false)}
-                colors={colors} styles={styles}
+                onSelect={setGroupId}
+                onClose={closeDD}
+                colors={colors}
             />
-            <PickerModal
-                visible={monthModal}
-                title="Filter by Month"
+
+            {/* Month dropdown — single select */}
+            <DropdownMenu
+                visible={openDD === 'month'}
+                anchor={anchors.month}
                 items={monthItems}
+                multiSelect={false}
                 selected={month}
-                onSelect={(id) => setMonth(id)}
-                onClose={() => setMonthModal(false)}
-                colors={colors} styles={styles}
+                onSelect={setMonth}
+                onClose={closeDD}
+                colors={colors}
             />
         </View>
     );
@@ -354,7 +406,6 @@ function makeStyles(colors) {
         },
         title: { fontSize: 20, fontFamily: F.bold, color: colors.text },
 
-        // Three chips row
         filterRow: {
             flexDirection: 'row',
             paddingHorizontal: 12,
@@ -392,9 +443,7 @@ function makeStyles(colors) {
         list:        { flex: 1 },
         listContent: { paddingHorizontal: 12, paddingBottom: 90 },
         center:      { paddingTop: 60, alignItems: 'center' },
-        empty: {
-            paddingTop: 60, alignItems: 'center', justifyContent: 'center', gap: 10,
-        },
+        empty: { paddingTop: 60, alignItems: 'center', justifyContent: 'center', gap: 10 },
         emptyTxt: { fontSize: 13, fontFamily: F.regular, color: colors.textSecondary },
 
         card: {
@@ -418,52 +467,5 @@ function makeStyles(colors) {
         meta:      { fontSize: 11, fontFamily: F.regular, color: colors.textSecondary },
         amount:    { fontFamily: F.semibold, color: colors.text },
         groupName: { fontSize: 11, fontFamily: F.medium, color: colors.primary, marginTop: 2 },
-
-        // Status dropdown (positioned below chip)
-        dropdown: {
-            position: 'absolute',
-            backgroundColor: colors.background,
-            borderRadius: 10,
-            borderWidth: 1,
-            borderColor: colors.border,
-            elevation: 10,
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: 4 },
-            shadowOpacity: 0.18,
-            shadowRadius: 8,
-            overflow: 'hidden',
-        },
-        dropRow: {
-            flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-            paddingHorizontal: 14, paddingVertical: 13,
-            borderBottomWidth: 1, borderBottomColor: colors.border,
-        },
-        dropTxt:     { fontSize: 13, fontFamily: F.medium, color: colors.text },
-        checkbox: {
-            width: 18, height: 18, borderRadius: 4,
-            borderWidth: 1.5, borderColor: colors.border,
-            alignItems: 'center', justifyContent: 'center',
-        },
-        dropDone: { paddingVertical: 11, alignItems: 'center' },
-        dropDoneTxt: { fontSize: 13, fontFamily: F.semibold, color: colors.primary },
-
-        // Bottom sheet (Group / Month pickers)
-        overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' },
-        sheet: {
-            position: 'absolute', bottom: 0, left: 0, right: 0,
-            backgroundColor: colors.background,
-            borderTopLeftRadius: 20, borderTopRightRadius: 20,
-            paddingHorizontal: 16, paddingBottom: 28,
-        },
-        handle: {
-            width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border,
-            alignSelf: 'center', marginTop: 12, marginBottom: 16,
-        },
-        sheetTitle:   { fontSize: 15, fontFamily: F.bold, color: colors.text, marginBottom: 4 },
-        sheetRow: {
-            flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-            paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.border,
-        },
-        sheetRowText: { fontSize: 14, fontFamily: F.regular, color: colors.text },
     });
 }
