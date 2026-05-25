@@ -19,10 +19,10 @@ const STATUS_OPTIONS = [
 ];
 
 const STATUS_INFO = [
-    { dot: '#F59E0B', label: 'Awaiting',  desc: 'Member submitted payment — waiting for your verification' },
-    { dot: '#6B7280', label: 'Pending',   desc: "Member hasn't submitted payment yet" },
-    { dot: '#10B981', label: 'Verified',  desc: 'Payment confirmed and collected'     },
-    { dot: '#EF4444', label: 'Rejected',  desc: 'Payment rejected — member needs to resubmit' },
+    { dot: '#F59E0B', label: 'Awaiting', desc: 'Member paid. Waiting for your approval.', action: 'You can Approve or Reject' },
+    { dot: '#6B7280', label: 'Pending',  desc: 'Member has not paid yet.',                action: 'Send a reminder'           },
+    { dot: '#10B981', label: 'Verified', desc: 'Payment done.',                           action: 'No action needed'          },
+    { dot: '#EF4444', label: 'Rejected', desc: 'Payment was rejected.',                   action: 'Member will pay again'     },
 ];
 
 const BADGE = {
@@ -75,6 +75,9 @@ function StatusInfoModal({ visible, onClose, colors }) {
                                 </Text>
                                 <Text style={{ fontSize: 12, fontFamily: F.regular, color: colors.textSecondary, lineHeight: 17 }}>
                                     {s.desc}
+                                </Text>
+                                <Text style={{ fontSize: 11, fontFamily: F.medium, color: s.dot, marginTop: 3 }}>
+                                    👉 {s.action}
                                 </Text>
                             </View>
                         </View>
