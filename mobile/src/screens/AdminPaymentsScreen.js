@@ -18,6 +18,13 @@ const STATUS_OPTIONS = [
     { id: 'rejected', label: 'Rejected',     dot: '#EF4444'  },
 ];
 
+const STATUS_INFO = [
+    { dot: '#F59E0B', label: 'Awaiting',  desc: 'Member submitted payment — waiting for your verification' },
+    { dot: '#6B7280', label: 'Pending',   desc: "Member hasn't submitted payment yet" },
+    { dot: '#10B981', label: 'Verified',  desc: 'Payment confirmed and collected'     },
+    { dot: '#EF4444', label: 'Rejected',  desc: 'Payment rejected — member needs to resubmit' },
+];
+
 const BADGE = {
     paid:     { bg: '#F59E0B', label: 'Awaiting' },
     pending:  { bg: '#6B7280', label: 'Pending'  },
@@ -35,6 +42,54 @@ function timeAgo(dateStr) {
     const hrs = Math.floor(mins / 60);
     if (hrs < 24)  return `${hrs}h ago`;
     return `${Math.floor(hrs / 24)}d ago`;
+}
+
+// ─── Status legend modal ─────────────────────────────────────────────────────
+function StatusInfoModal({ visible, onClose, colors }) {
+    return (
+        <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+            <TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', paddingHorizontal: 32 }} activeOpacity={1} onPress={onClose}>
+                <TouchableOpacity activeOpacity={1} style={{
+                    backgroundColor: colors.background,
+                    borderRadius: 18,
+                    padding: 20,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    shadowColor: '#000', shadowOffset: { width: 0, height: 8 },
+                    shadowOpacity: 0.18, shadowRadius: 16, elevation: 12,
+                }}>
+                    <Text style={{ fontSize: 15, fontFamily: F.bold, color: colors.text, marginBottom: 16 }}>
+                        Payment Statuses
+                    </Text>
+                    {STATUS_INFO.map((s, i) => (
+                        <View key={s.label} style={{
+                            flexDirection: 'row', alignItems: 'flex-start', gap: 12,
+                            paddingVertical: 10,
+                            borderTopWidth: i === 0 ? 0 : StyleSheet.hairlineWidth,
+                            borderTopColor: colors.border,
+                        }}>
+                            <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: s.dot, marginTop: 3 }} />
+                            <View style={{ flex: 1 }}>
+                                <Text style={{ fontSize: 13, fontFamily: F.semibold, color: colors.text, marginBottom: 2 }}>
+                                    {s.label}
+                                </Text>
+                                <Text style={{ fontSize: 12, fontFamily: F.regular, color: colors.textSecondary, lineHeight: 17 }}>
+                                    {s.desc}
+                                </Text>
+                            </View>
+                        </View>
+                    ))}
+                    <TouchableOpacity
+                        onPress={onClose}
+                        style={{ marginTop: 16, height: 40, borderRadius: 10, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' }}
+                        activeOpacity={0.8}
+                    >
+                        <Text style={{ fontSize: 14, fontFamily: F.semibold, color: '#fff' }}>Got it</Text>
+                    </TouchableOpacity>
+                </TouchableOpacity>
+            </TouchableOpacity>
+        </Modal>
+    );
 }
 
 // ─── Single-select dropdown (Group / Month) — mirrors dashboard exactly ──────
@@ -182,6 +237,7 @@ export default function AdminPaymentsScreen({ navigation, route }) {
     const [refreshing, setRefreshing] = useState(false);
 
     const [statusOpen, setStatusOpen] = useState(false);
+    const [infoOpen,   setInfoOpen]   = useState(false);
 
     useEffect(() => {
         const { activeFilter, group: inGroup, month: inMonth } = route?.params || {};
@@ -248,7 +304,12 @@ export default function AdminPaymentsScreen({ navigation, route }) {
         <View style={styles.root}>
             <View style={styles.header}>
                 <Text style={styles.title}>Payments</Text>
+                <TouchableOpacity onPress={() => setInfoOpen(true)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} activeOpacity={0.7}>
+                    <Ionicons name="information-circle-outline" size={22} color={colors.textSecondary} />
+                </TouchableOpacity>
             </View>
+
+            <StatusInfoModal visible={infoOpen} onClose={() => setInfoOpen(false)} colors={colors} />
 
             {/* ── Filter row ── */}
             <View style={styles.filterRow}>
@@ -343,6 +404,7 @@ function makeStyles(colors) {
     return StyleSheet.create({
         root:   { flex: 1, backgroundColor: colors.background },
         header: {
+            flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
             paddingTop: 56, paddingBottom: 12, paddingHorizontal: 16,
             borderBottomWidth: 1, borderBottomColor: colors.border,
         },
