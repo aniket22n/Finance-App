@@ -79,7 +79,9 @@ const resetPinValidations      = [phone(), otp(), pin()];
 const initiatePaymentValidations = [
     body('groupId').isMongoId().withMessage('Invalid group ID'),
     body('month').isInt({ min: 1, max: 120 }).withMessage('Month must be 1-120'),
-    body('amount').isFloat({ min: 1 }).withMessage('Amount must be positive'),
+    // amount is NOT trusted from the client — the server uses the due stored at draw
+    // time. Kept optional only for backward-compatible request bodies.
+    body('amount').optional().isFloat({ min: 1 }).withMessage('Amount must be positive'),
     optionalString('paymentMethod'),
     optionalString('upiTransactionId'),
     optionalString('upiRef'),

@@ -1,8 +1,10 @@
 const express = require('express');
 const Notification = require('../models/Notification');
 const { auth } = require('../middleware/auth');
+const validateObjectId = require('../middleware/validateObjectId');
 
 const router = express.Router();
+router.param('id', validateObjectId);
 
 // GET /api/notifications — list current user's notifications (newest first, capped 50)
 router.get('/', auth, async (req, res) => {

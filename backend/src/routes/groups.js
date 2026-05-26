@@ -4,8 +4,11 @@ const User = require('../models/User');
 const { auth, adminOnly } = require('../middleware/auth');
 const { validateGroupConfig, getGroupSummary } = require('../utils/emiEngine');
 const { validate, createGroupValidations, updateGroupValidations, addMemberValidations } = require('../middleware/validators');
+const validateObjectId = require('../middleware/validateObjectId');
 
 const router = express.Router();
+router.param('id', validateObjectId);
+router.param('userId', validateObjectId);
 
 // POST /api/groups — Create group (admin only)
 router.post('/', auth, adminOnly, createGroupValidations, validate, async (req, res) => {

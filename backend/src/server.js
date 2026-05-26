@@ -20,6 +20,7 @@ const paymentRoutes = require('./routes/payments');
 const emiRoutes = require('./routes/emi');
 const adminRoutes = require('./routes/admin');
 const notificationsRoutes = require('./routes/notifications');
+const auditLogger = require('./middleware/auditLogger');
 
 const app = express();
 
@@ -41,6 +42,10 @@ app.get('/', (req, res) => {
 app.get('/health', (req, res) => {
     res.json({ status: 'ok' });
 });
+
+// Audit trail for admin payment actions — runs before the routes, records on finish.
+// Non-invasive: never alters responses or route behavior.
+app.use('/api/admin/payments', auditLogger);
 
 // API Routes
 app.use('/api/auth', authRoutes);

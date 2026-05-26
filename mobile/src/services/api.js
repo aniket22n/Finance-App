@@ -126,7 +126,6 @@ export const getAdminPaymentsList = ({ statuses = [], group, month } = {}) => {
 };
 export const getPendingPayments = () => api.get('/payments/pending/all');
 export const requestPaymentActionOtp = (id) => api.post(`/payments/${id}/request-action-otp`);
-export const verifyPayment = (id, status, notes, otp) => api.put(`/payments/${id}/verify`, { status, notes, otp });
 export const adminVerifyPayment = (id, otp) => api.post(`/admin/payments/${id}/verify`, { otp });
 export const adminRejectPayment = (id, otp, reason) => api.post(`/admin/payments/${id}/reject`, { otp, reason });
 export const adminChangePaymentStatus = (id, newStatus, otp) => api.post(`/admin/payments/${id}/change-status`, { newStatus, otp });

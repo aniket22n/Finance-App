@@ -36,11 +36,20 @@ const verifyAdminOtp = (admin, otp) => {
 };
 
 const router = express.Router();
+const validateObjectId = require('../middleware/validateObjectId');
+router.param('id', validateObjectId);
+router.param('groupId', validateObjectId);
+router.param('userId', validateObjectId);
 
-// POST /api/payments/initiate — Record a payment intent
+// POST /api/payments/initiate — Record a payment against a member's due for the month.
+//
+// The amount is ALWAYS taken from the due that the draw created server-side — the
+// client-sent `amount` is never trusted (real money). A member can only pay a month
+// that has an existing due (i.e. its draw has run); this also blocks fabricated
+// months that have no matching cycle.
 router.post('/initiate', auth, initiatePaymentValidations, validate, async (req, res) => {
     try {
-        const { groupId, month, amount, upiRef, upiTransactionId, paymentMethod, receipt } = req.body;
+        const { groupId, month, upiRef, upiTransactionId, paymentMethod, receipt } = req.body;
 
         const group = await Group.findById(groupId);
         if (!group) return res.status(404).json({ error: 'Group not found' });
@@ -49,34 +58,24 @@ router.post('/initiate', auth, initiatePaymentValidations, validate, async (req,
             return res.status(403).json({ error: 'You are not a member of this group' });
         }
 
-        // Check for existing payment
-        let payment = await Payment.findOne({ user: req.user._id, group: groupId, month });
-        if (payment && payment.status === 'verified') {
+        // The due record is created at draw time with the authoritative amount.
+        const payment = await Payment.findOne({ user: req.user._id, group: groupId, month });
+        if (!payment) {
+            return res.status(400).json({ error: 'No dues found for this month. Payment opens after the monthly draw.' });
+        }
+        if (payment.status === 'verified') {
             return res.status(400).json({ error: 'Payment already verified for this month' });
         }
 
-        if (payment) {
-            payment.amount = amount;
-            payment.upiRef = upiRef || '';
-            payment.upiTransactionId = upiTransactionId || '';
-            if (paymentMethod) payment.paymentMethod = paymentMethod;
-            if (receipt) payment.receipt = receipt;
-            payment.status = 'paid';
-            payment.paidAt = new Date();
-        } else {
-            payment = new Payment({
-                user: req.user._id,
-                group: groupId,
-                month,
-                amount,
-                upiRef: upiRef || '',
-                upiTransactionId: upiTransactionId || '',
-                paymentMethod: paymentMethod || 'upi',
-                receipt: receipt || '',
-                status: 'paid',
-                paidAt: new Date(),
-            });
-        }
+        // amount = server-stored due, NOT req.body.amount.
+        const amount = payment.amount;
+
+        payment.upiRef = upiRef || '';
+        payment.upiTransactionId = upiTransactionId || '';
+        if (paymentMethod) payment.paymentMethod = paymentMethod;
+        if (receipt) payment.receipt = receipt;
+        payment.status = 'paid';
+        payment.paidAt = new Date();
 
         await payment.save();
 
@@ -107,75 +106,37 @@ router.post('/:id/request-action-otp', auth, adminOnly, async (req, res) => {
     }
 });
 
-// PUT /api/payments/:id/verify — Admin changes payment status (requires OTP)
-router.put('/:id/verify', auth, adminOnly, async (req, res) => {
-    try {
-        const { status, notes, otp } = req.body;
-
-        if (!otp) return res.status(400).json({ error: 'OTP is required to change payment status' });
-        const admin = await User.findById(req.user._id);
-        if (!verifyAdminOtp(admin, otp)) {
-            return res.status(400).json({ error: 'Invalid or expired OTP' });
-        }
-        admin.otp = undefined;
-        admin.otpExpiresAt = undefined;
-        await admin.save();
-
-        const newStatus = status || 'verified';
-        const payment = await Payment.findById(req.params.id).populate('user', 'name phone expoPushToken');
-        if (!payment) return res.status(404).json({ error: 'Payment not found' });
-
-        payment.status = newStatus;
-        payment.verifiedAt = new Date();
-        payment.verifiedBy = req.user._id;
-        if (notes) payment.notes = notes;
-        await payment.save();
-
-        // Notify member
-        const { notifyUsers } = require('../utils/notify');
-        let title, body, notifType;
-        if (newStatus === 'verified') {
-            title = '✅ Payment Verified';
-            body = `Your payment of ₹${payment.amount.toLocaleString('en-IN')} has been verified.`;
-            notifType = 'payment_verified';
-        } else if (newStatus === 'failed') {
-            title = '❌ Payment Rejected';
-            body = `Your payment of ₹${payment.amount.toLocaleString('en-IN')} was rejected. Please resubmit your payment.${notes ? ' ' + notes : ''}`;
-            notifType = 'payment_rejected';
-        } else {
-            title = '🔄 Payment Reset';
-            body = `Your payment of ₹${payment.amount.toLocaleString('en-IN')} has been reset to ${newStatus}.`;
-            notifType = 'payment_updated';
-        }
-        if (payment.user.expoPushToken) {
-            sendPushNotification(payment.user.expoPushToken, title, body, { paymentId: String(payment._id) }).catch(() => {});
-        }
-        await notifyUsers(payment.user._id, {
-            type: notifType,
-            title,
-            body,
-            data: { paymentId: String(payment._id) },
-        });
-
-        res.json({ success: true, payment });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
+// Payment status changes are handled by the admin routes (OTP-gated):
+//   POST /api/admin/payments/:id/verify
+//   POST /api/admin/payments/:id/reject
+//   POST /api/admin/payments/:id/change-status
 
 // GET /api/payments/group/:groupId — All payments for a group
 router.get('/group/:groupId', auth, async (req, res) => {
     try {
-        const { month, status } = req.query;
+        const { month, status, page, limit } = req.query;
         const filter = { group: req.params.groupId };
         if (month) filter.month = parseInt(month);
         if (status) filter.status = status;
 
-        const payments = await Payment.find(filter)
+        // Pagination is opt-in: only applied when `limit` is provided, so existing
+        // callers that expect the full list are unaffected.
+        const query = Payment.find(filter)
             .populate('user', 'name phone avatar')
             .populate('verifiedBy', 'name')
             .sort({ createdAt: -1 });
 
+        if (limit) {
+            const lim = Math.min(parseInt(limit) || 50, 200);
+            const pg = Math.max(parseInt(page) || 1, 1);
+            const [payments, total] = await Promise.all([
+                query.skip((pg - 1) * lim).limit(lim),
+                Payment.countDocuments(filter),
+            ]);
+            return res.json({ payments, total, page: pg, pages: Math.ceil(total / lim) });
+        }
+
+        const payments = await query;
         res.json({ payments });
     } catch (error) {
         res.status(500).json({ error: error.message });

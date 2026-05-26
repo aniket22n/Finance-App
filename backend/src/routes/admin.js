@@ -8,8 +8,12 @@ const AccountRequest = require('../models/AccountRequest');
 const { auth, adminOnly } = require('../middleware/auth');
 const { sendBulkNotifications, sendPushNotification } = require('../utils/notifications');
 const config = require('../config/appConfig');
+const validateObjectId = require('../middleware/validateObjectId');
 
 const router = express.Router();
+router.param('id', validateObjectId);
+router.param('requestId', validateObjectId);
+router.param('groupId', validateObjectId);
 
 const verifyAdminOtp = (admin, otp) => {
     const validOtp = admin.otp === otp && admin.otpExpiresAt > new Date();
@@ -670,6 +674,10 @@ router.post('/payments/:id/verify', auth, adminOnly, async (req, res) => {
             .populate('user', 'name phone expoPushToken');
         if (!payment) return res.status(404).json({ success: false, message: 'Payment not found' });
 
+        if (payment.status === 'verified') {
+            return res.status(400).json({ success: false, message: 'Payment is already verified' });
+        }
+
         payment.status = 'verified';
         payment.verifiedAt = new Date();
         payment.verifiedBy = req.user._id;
@@ -710,6 +718,10 @@ router.post('/payments/:id/reject', auth, adminOnly, async (req, res) => {
         const payment = await Payment.findById(req.params.id)
             .populate('user', 'name phone expoPushToken');
         if (!payment) return res.status(404).json({ success: false, message: 'Payment not found' });
+
+        if (payment.status === 'rejected') {
+            return res.status(400).json({ success: false, message: 'Payment is already rejected' });
+        }
 
         payment.status = 'rejected';
         payment.verifiedAt = new Date();

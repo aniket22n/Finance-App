@@ -9,6 +9,8 @@ const { notifyUsers } = require('../utils/notify');
 const { validate, createCycleValidations } = require('../middleware/validators');
 
 const router = express.Router();
+const validateObjectId = require('../middleware/validateObjectId');
+router.param('groupId', validateObjectId);
 
 // POST /api/emi/cycle — Create next EMI cycle (admin only)
 // Integrates with group.monthlyConfig (POT Plan):
