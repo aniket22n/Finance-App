@@ -640,7 +640,7 @@ router.get('/payments', auth, adminOnly, async (req, res) => {
 
         const payments = await Payment.find(filter)
             .populate('user', 'name phone avatar')
-            .populate('group', 'name totalMonths')
+            .populate('group', 'name totalMonths potAmount')
             .populate('verifiedBy', 'name')
             .sort({ createdAt: -1 })
             .limit(parseInt(limit))

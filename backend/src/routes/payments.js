@@ -233,6 +233,49 @@ router.get('/pending/all', auth, adminOnly, async (req, res) => {
     }
 });
 
+// POST /api/payments/:id/remind — Admin sends a payment reminder to a member
+router.post('/:id/remind', auth, adminOnly, async (req, res) => {
+    try {
+        const payment = await Payment.findById(req.params.id)
+            .populate('user', 'name phone expoPushToken')
+            .populate('group', 'name');
+        if (!payment) return res.status(404).json({ success: false, message: 'Payment not found' });
+
+        const allowedStatuses = ['pending', 'rejected', 'failed'];
+        if (!allowedStatuses.includes(payment.status)) {
+            return res.status(400).json({ success: false, message: 'Reminder can only be sent for pending or rejected payments' });
+        }
+
+        const memberName = payment.user?.name || payment.user?.phone || 'Member';
+        const groupName  = payment.group?.name || 'your group';
+        const amount     = payment.amount?.toLocaleString('en-IN') || '';
+
+        const title = '⏰ Payment Reminder';
+        const body  = payment.status === 'rejected'
+            ? `Your payment of ₹${amount} for ${groupName} Month ${payment.month} was rejected. Please resubmit.`
+            : `Your EMI of ₹${amount} for ${groupName} Month ${payment.month} is due. Please pay now.`;
+
+        if (payment.user?.expoPushToken) {
+            sendPushNotification(payment.user.expoPushToken, title, body, {
+                paymentId: String(payment._id),
+                screen: 'Payments',
+            }).catch(() => {});
+        }
+
+        const { notifyUsers } = require('../utils/notify');
+        await notifyUsers(payment.user._id, {
+            type: 'payment_reminder',
+            title,
+            body,
+            data: { paymentId: String(payment._id) },
+        });
+
+        res.json({ success: true, message: `Reminder sent to ${memberName}` });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
 // GET /api/payments/my/pending — Current user's pending payments
 router.get('/my/pending', auth, async (req, res) => {
     try {

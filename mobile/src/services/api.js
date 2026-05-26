@@ -130,6 +130,7 @@ export const verifyPayment = (id, status, notes, otp) => api.put(`/payments/${id
 export const adminVerifyPayment = (id, otp) => api.post(`/admin/payments/${id}/verify`, { otp });
 export const adminRejectPayment = (id, otp, reason) => api.post(`/admin/payments/${id}/reject`, { otp, reason });
 export const adminChangePaymentStatus = (id, newStatus, otp) => api.post(`/admin/payments/${id}/change-status`, { newStatus, otp });
+export const sendPaymentReminder = (id) => api.post(`/payments/${id}/remind`);
 
 // ── EMI (admin) ──
 // data: { groupId, winnerId, reducedEmi?, emiAmount? }
