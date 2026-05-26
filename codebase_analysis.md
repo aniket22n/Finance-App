@@ -57,7 +57,7 @@ graph TB
 | [HomeScreen.js](file:///c:/Users/amarn/OneDrive/Desktop/Android%20App/mobile/src/screens/HomeScreen.js) | 178 | Stats cards (groups, active, pot), quick actions, active groups list | ❌ No upcoming EMI due, no next draw info, no reminders |
 | [GroupListScreen.js](file:///c:/Users/amarn/OneDrive/Desktop/Android%20App/mobile/src/screens/GroupListScreen.js) | 73 | Simple list of groups with GroupCard | ✅ Functional |
 | [GroupDetailScreen.js](file:///c:/Users/amarn/OneDrive/Desktop/Android%20App/mobile/src/screens/GroupDetailScreen.js) | 192 | Progress ring, pot/EMI stats, current cycle winner, member list | ❌ No "Next member for draw" info, no payment history  |
-| [PaymentScreen.js](file:///c:/Users/amarn/OneDrive/Desktop/Android%20App/mobile/src/screens/PaymentScreen.js) | 190 | UPI deeplink payment, pending/completed lists | ❌ No payment gateway options (Razorpay/PhonePe SDK), only UPI deeplink |
+| [PaymentScreen.js](file:///c:/Users/amarn/OneDrive/Desktop/Android%20App/mobile/src/screens/PaymentScreen.js) | 190 | UPI deeplink + bank/cash payment, pending/completed lists | ✅ Functional — payment gateway intentionally out of scope (manual admin verification) |
 | [ProfileScreen.js](file:///c:/Users/amarn/OneDrive/Desktop/Android%20App/mobile/src/screens/ProfileScreen.js) | 250 | Edit name, avatar, push token registration | ✅ Complete |
 
 #### Components
@@ -137,9 +137,8 @@ graph TB
 **Current state**: Only UPI deeplink (`upi://pay?...`) which opens UPI apps.  
 **Missing**:
 - No in-app payment status confirmation (relies on user honouring the deeplink)
-- No Razorpay / PhonePe SDK integration for seamless in-app payment
-- No bank transfer / NEFT option
-- No cash payment recording by members
+
+(Payment gateway / Razorpay is intentionally out of scope; bank and cash methods are supported with manual admin verification.)
 - No payment receipt/screenshot upload
 
 ### 3. 🔔 Reminders — Before & After EMI Due (Backend + Mobile)

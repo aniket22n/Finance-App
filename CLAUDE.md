@@ -14,9 +14,9 @@ EMI Group is a chit-fund / rotating savings management system for Indian member 
 | Mobile | React Native + Expo (SDK 52), React Navigation 6, Axios — **single app for both members AND admins** |
 | Push Notifications | Firebase FCM via Expo Push SDK (built) |
 | Email | Gmail SMTP via Nodemailer (to build) |
-| Payments | Razorpay (to integrate) — UPI deeplink currently |
+| Payments | UPI deeplink + bank/cash with manual admin verification (no payment gateway) |
 | Database | MongoDB Atlas (free M0 tier) |
-| Deployment | Render (backend), Vercel (admin), Expo EAS + Google Play (mobile) |
+| Deployment | Render (backend), Expo EAS + Google Play (mobile) |
 
 ---
 
@@ -75,13 +75,11 @@ EMI Group is a chit-fund / rotating savings management system for Indian member 
 
 ## Payment Rules
 
-- **UPI**: 0% fee — default option, shown first
-- **Card / Razorpay**: +2% convenience fee — displayed to member before confirmation, NEVER absorbed by the system
-- **Fee calculation**: `cardTotal = baseAmount * 1.02` — computed server-side, shown client-side before confirm
-- **Payment status flow**: `pending → paid → verified` (success) or `pending → failed` (failure) — no other transitions
-- **Server-side validation**: Payment amount MUST be validated server-side against the group's EMI amount — never trust client body for amount
-- **Razorpay webhook**: Signature must be verified server-side using `crypto.createHmac` before marking any payment as verified
+- **Methods**: UPI deeplink (default), bank transfer, and cash — all verified manually by an admin. No payment gateway / online card processing.
+- **Payment status flow**: `pending → paid → verified` (success) or `pending → rejected`/`failed` — admin actions are OTP-gated; `change-status` only allows `verified ↔ rejected`
+- **Server-authoritative amount**: `/payments/initiate` uses the due stored on the `Payment` record (created at draw time), NEVER the client-sent `amount`; a month with no existing due is rejected
 - **Receipt upload**: Accepted for bank/cash payments; stored as base64 or URL on Payment model
+- **Audit trail**: admin verify/reject/change-status actions are recorded to the `AuditLog` collection by a non-invasive post-response middleware
 
 ---
 
@@ -90,21 +88,17 @@ EMI Group is a chit-fund / rotating savings management system for Indian member 
 | Service | Platform | Notes |
 |---------|----------|-------|
 | Backend | Render.com (free tier) | Build: `npm install`, Start: `node src/server.js` |
-| Admin | Vercel (free tier) | Env: `VITE_API_URL` |
 | Database | MongoDB Atlas (free M0) | Whitelist `0.0.0.0/0` for Render |
 | Mobile | Expo EAS → Google Play | Android AAB only; EAS manages signing keys |
+
+> The admin UI is part of the mobile app (role-gated). There is no separate web portal / Vercel deploy.
 
 ### Environment Variables (never hardcode, never commit)
 
 **Backend (set in Render dashboard)**:
 ```
-MONGO_URI, JWT_SECRET, NODE_ENV, RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET,
-GMAIL_USER, GMAIL_APP_PASSWORD, FCM_SERVER_KEY, DEV_OTP (dev only)
-```
-
-**Admin (set in Vercel dashboard)**:
-```
-VITE_API_URL
+MONGO_URI, JWT_SECRET, NODE_ENV,
+GMAIL_USER, GMAIL_APP_PASSWORD, FCM_SERVER_KEY, FAST2SMS_API_KEY, DEV_OTP (dev only)
 ```
 
 **Mobile (Expo config / app.json extra)**:
@@ -129,33 +123,20 @@ Pings `GET /health` every 5 minutes to prevent Render free-tier cold starts. Con
 
 ## Known Gaps — Priority Build Order
 
-### 1. Razorpay Integration (CRITICAL — real money)
-- Backend: `POST /api/payments/create-order` → Razorpay order, `POST /api/payments/verify-razorpay` → webhook signature check
-- Mobile: PaymentScreen — show UPI as default (0%), card option with +2% fee preview
-- Never trust client-sent amount — always recompute server-side
+> Payment gateway (Razorpay) is **out of scope** — client confirmed UPI/bank/cash with manual admin verification is sufficient. Do not add a gateway.
 
-### 2. BC Draw — Eligible Members & Draw History
-- Backend: `GET /api/emi/eligible/:groupId` — members who haven't won yet
-- Mobile: GroupDetailScreen — "Next Draw" section + draw history timeline
-- Admin: GroupDetail new-cycle modal — filter dropdown to eligible members only
-- Notify all eligible members when new cycle created
+### 1. Gmail EMI Reminders (cron already exists at `backend/src/jobs/reminderScheduler.js`, runs `0 10 * * *`)
+- Scheduler currently sends Expo push only — add Gmail SMTP (Nodemailer) email reminders
+- Admin settings to configure reminder timing per group
 
-### 3. Gmail EMI Reminders (cron already exists at `backend/src/jobs/reminderScheduler.js`)
-- Add `dueDate`, `reminderDaysBefore`, `reminderDaysAfter` to Group model
-- Enhance scheduler to send push + email reminders
-- Admin Settings page — configure reminder timing per group
+### 2. SMS / WhatsApp reminders
+- Confirm requirement with client before building (Fast2SMS hook exists for OTP)
 
-### 4. Enhanced Admin Dashboard Charts
-- Revenue trend line chart (last 30 days)
-- Payment status donut chart
-- Overdue alerts section
-- Group health cards
-- Backend: `/api/admin/analytics/revenue`, `/api/admin/analytics/overdue`, `/api/admin/analytics/group-health`
-- Recharts already installed
-
-### 5. API_BASE Production Config (CRITICAL for Play Store)
-- `mobile/src/services/api.js` currently hardcoded to local IP `10.22.231.66:5000`
-- Must use `app.json` extra config + `Constants.expoConfig.extra.apiBase`
+### Done / not gaps
+- Payment integrity — `/payments/initiate` is server-authoritative on amount; admin actions OTP-gated + audit-logged (`AuditLog`)
+- BC Draw eligibility (`GET /api/emi/eligible/:groupId`) + POT plan (`configure-pot`)
+- Admin analytics (`/analytics/revenue`, `/analytics/overdue`, `/analytics/group-health`)
+- `API_BASE` from `Constants.expoConfig.extra.apiBase` (no longer hardcoded)
 
 ---
 
@@ -187,7 +168,7 @@ Pings `GET /health` every 5 minutes to prevent Render free-tier cold starts. Con
 - Expo packages only via `npx expo install` — never bare RN CLI packages
 - Android only — no iOS-specific code, no `Platform.OS === 'ios'` branches for features
 - `API_BASE` from env config only — never hardcoded
-- UPI shown first (0% fee); Card option shows +2% fee before user confirms
+- Payment amount is server-provided — show the due from the API; never compute amounts client-side
 
 ---
 
@@ -196,11 +177,11 @@ Pings `GET /health` every 5 minutes to prevent Render free-tier cold starts. Con
 - [ ] `auth` middleware present on all payment and user routes
 - [ ] No user input passed directly into MongoDB query without sanitization
 - [ ] No API keys or secrets in source files
-- [ ] Payment amount validated server-side (not from client body)
+- [ ] Payment amount taken from the stored due, never from client body
 - [ ] JWT secret is not hardcoded
 - [ ] OTP not logged in production
 - [ ] DEV_OTP bypass disabled in production
-- [ ] Razorpay webhook signature verified server-side
+- [ ] Admin payment actions OTP-gated
 - [ ] OTP and login routes have rate limiting
 - [ ] HTTPS enforced in production (Render handles this)
 
@@ -210,13 +191,12 @@ Pings `GET /health` every 5 minutes to prevent Render free-tier cold starts. Con
 
 | Task | Use Agent |
 |------|-----------|
-| New route, model, cron job, Razorpay/Gmail/FCM integration | `backend-dev` |
-| Admin portal page, chart, form, table | `admin-dev` |
-| Mobile screen, component, navigation, push notification UI | `mobile-dev` |
+| New route, model, cron job, Gmail/FCM integration | `backend-dev` |
+| Mobile screen (member or admin), component, navigation, push notification UI | `mobile-dev` |
 | Writing or updating Jest tests | `tdd-guide` |
 | Pre-merge code quality check | `code-reviewer` |
 | Pre-deploy security audit | `security-reviewer` |
-| GitHub push, Render deploy, Vercel deploy, EAS build, Play Store | `deployer` |
+| GitHub push, Render deploy, EAS build, Play Store | `deployer` |
 
 ---
 
@@ -225,10 +205,9 @@ Pings `GET /health` every 5 minutes to prevent Render free-tier cold starts. Con
 - **Never** modify `.env` directly — always tell user to set in dashboard
 - **Never** skip input validation on any route that touches the DB
 - **Never** build for iOS — Android only
-- **Never** hardcode `API_BASE`, JWT secrets, Razorpay keys, or MongoDB URI
-- **Never** trust client-sent payment amounts — always recompute server-side
+- **Never** hardcode `API_BASE`, JWT secrets, or MongoDB URI
+- **Never** trust client-sent payment amounts — use the due stored on the Payment record
 - **Never** log OTPs in production
-- **Never** mark a Razorpay payment as verified without checking webhook signature
 - **Never** use bare React Native CLI packages — Expo SDK only
 
 ---
