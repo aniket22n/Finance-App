@@ -49,6 +49,9 @@ export default function AdminGroupsScreen({ navigation }) {
     const [editTarget, setEditTarget] = useState(null);
     const [form, setForm] = useState(EMPTY_FORM);
 
+    const [compact, setCompact] = useState(false);
+    const [sortBy, setSortBy] = useState('active'); // 'active' | 'recent'
+
     // OTP-confirm flow for edits
     const [showOtpModal, setShowOtpModal] = useState(false);
     const [otpCode, setOtpCode] = useState('');
@@ -215,30 +218,41 @@ export default function AdminGroupsScreen({ navigation }) {
     const setField = (key, value) => setForm(prev => ({ ...prev, [key]: value }));
     const [searchFocused, searchFocusProps] = useInputFocus();
 
-    const filtered = search
-        ? groups.filter(g => g.name?.toLowerCase().includes(search.toLowerCase()))
-        : groups;
+    const filtered = useMemo(() => {
+        const base = search
+            ? groups.filter(g => g.name?.toLowerCase().includes(search.toLowerCase()))
+            : [...groups];
+        return base.sort((a, b) => {
+            if (sortBy === 'active') {
+                if (a.status === 'active' && b.status !== 'active') return -1;
+                if (a.status !== 'active' && b.status === 'active') return 1;
+                return 0;
+            }
+            // recently created
+            return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+        });
+    }, [groups, search, sortBy]);
 
     const styles = useMemo(() => makeStyles(colors), [colors]);
 
     return (
         <View style={styles.root}>
-            {/* Header */}
+            {/* ── Header ── */}
             <View style={styles.header}>
                 <Text style={styles.title}>Groups</Text>
                 <TouchableOpacity style={styles.createBtn} onPress={openCreate} activeOpacity={0.8}>
-                    <Ionicons name="add" size={24} color="#fff" />
+                    <Ionicons name="add" size={22} color="#fff" />
                 </TouchableOpacity>
             </View>
 
-            {/* Search */}
+            {/* ── Search ── */}
             <View style={[styles.searchWrap, focusBorder(colors, searchFocused)]}>
                 <Ionicons name="search" size={16} color={colors.textSecondary} style={{ marginRight: 8 }} />
                 <TextInput
                     style={[styles.searchInput, webOutlineReset]}
                     value={search}
                     onChangeText={setSearch}
-                    placeholder="Search groups..."
+                    placeholder="Search groups by name..."
                     placeholderTextColor={colors.textSecondary}
                     {...searchFocusProps}
                 />
@@ -249,13 +263,39 @@ export default function AdminGroupsScreen({ navigation }) {
                 ) : null}
             </View>
 
-            {/* Count */}
-            <Text style={styles.countLabel}>ALL GROUPS ({filtered.length})</Text>
+            {/* ── Count + sort + compact toggle ── */}
+            <View style={styles.countRow}>
+                <Text style={styles.countLabel}>ALL GROUPS ({filtered.length})</Text>
+                <View style={styles.sortRow}>
+                    <TouchableOpacity
+                        style={[styles.sortPill, sortBy === 'active' && styles.sortPillActive]}
+                        onPress={() => setSortBy('active')}
+                        activeOpacity={0.75}
+                    >
+                        <Text style={[styles.sortPillText, sortBy === 'active' && styles.sortPillTextActive]}>Active</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={[styles.sortPill, sortBy === 'recent' && styles.sortPillActive]}
+                        onPress={() => setSortBy('recent')}
+                        activeOpacity={0.75}
+                    >
+                        <Text style={[styles.sortPillText, sortBy === 'recent' && styles.sortPillTextActive]}>Recent</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={[styles.compactBtn, compact && styles.compactBtnActive]}
+                        onPress={() => setCompact(v => !v)}
+                        activeOpacity={0.75}
+                    >
+                        <Ionicons name={compact ? 'list' : 'reorder-four'} size={16} color={compact ? colors.primary : colors.textSecondary} />
+                    </TouchableOpacity>
+                </View>
+            </View>
 
             <ScrollView
                 style={styles.list}
-                contentContainerStyle={{ paddingBottom: 90 }}
+                contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 100, gap: 10 }}
                 refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+                showsVerticalScrollIndicator={false}
             >
                 {loading ? (
                     <View style={styles.loadingBox}><ActivityIndicator color={colors.primary} /></View>
@@ -265,41 +305,52 @@ export default function AdminGroupsScreen({ navigation }) {
                         <Text style={styles.emptyText}>{search ? 'No groups found' : 'No groups yet'}</Text>
                     </View>
                 ) : (
-                    filtered.map(group => (
+                    filtered.map((group) => (
                         <TouchableOpacity
                             key={group._id}
-                            style={styles.card}
+                            style={[styles.card, compact && styles.cardCompact]}
                             onPress={() => navigation.navigate('GroupDetail', { groupId: group._id })}
                             activeOpacity={0.75}
                         >
-                            <View style={styles.cardHeader}>
-                                <Text style={styles.groupName}>{group.name}</Text>
-                                <View style={styles.cardActions}>
-                                    <TouchableOpacity
-                                        style={[styles.iconBtn, { marginRight: 8 }]}
-                                        onPress={() => navigation.navigate('AdminPOTWinnerConfig', { groupId: group._id })}
-                                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                                    >
-                                        <Ionicons name="settings-outline" size={16} color={colors.textSecondary} />
-                                    </TouchableOpacity>
-                                    <TouchableOpacity
-                                        style={styles.iconBtn}
-                                        onPress={() => openEdit(group)}
-                                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                                    >
-                                        <Ionicons name="create-outline" size={16} color={colors.textSecondary} />
-                                    </TouchableOpacity>
-                                </View>
+                            {/* Info */}
+                            <View style={styles.cardBody}>
+                                <Text style={styles.groupName} numberOfLines={1}>{group.name}</Text>
+                                {!compact && (
+                                    <>
+                                        <Text style={styles.cardMeta}>
+                                            {group.members?.length || 0}/{group.maxMembers || '?'} members
+                                            {(group.currentMonth || 0) > 0 ? `  ·  Month ${group.currentMonth}/${group.totalMonths}` : ''}
+                                        </Text>
+                                        <Text style={styles.cardDetail}>
+                                            ₹{group.emiAmount?.toLocaleString('en-IN')}/month
+                                            {'  ·  Due day '}{group.dueDay || 5}
+                                        </Text>
+                                    </>
+                                )}
+                                {compact && (
+                                    <Text style={styles.cardMeta}>
+                                        {group.members?.length || 0} members  ·  ₹{group.emiAmount?.toLocaleString('en-IN')}/mo
+                                    </Text>
+                                )}
                             </View>
-                            <Text style={styles.cardMeta}>
-                                👥 {group.members?.length || 0}/{group.maxMembers || '?'} members
-                                {(group.currentMonth || 0) > 0
-                                    ? ` • Month ${group.currentMonth}/${group.totalMonths}`
-                                    : ` • ${group.status || 'pending'}`}
-                            </Text>
-                            <Text style={styles.cardDetail}>
-                                ₹{group.emiAmount?.toLocaleString()}/month • Due day {group.dueDay || 5}
-                            </Text>
+
+                            {/* Actions */}
+                            <View style={styles.cardActions}>
+                                <TouchableOpacity
+                                    style={styles.iconBtn}
+                                    onPress={() => navigation.navigate('AdminPOTWinnerConfig', { groupId: group._id })}
+                                >
+                                    <Ionicons name="settings-outline" size={18} color={colors.textSecondary} />
+                                    <Text style={styles.iconLabel}>Config</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={styles.iconBtn}
+                                    onPress={() => openEdit(group)}
+                                >
+                                    <Ionicons name="create-outline" size={18} color={colors.textSecondary} />
+                                    <Text style={styles.iconLabel}>Edit</Text>
+                                </TouchableOpacity>
+                            </View>
                         </TouchableOpacity>
                     ))
                 )}
@@ -440,96 +491,81 @@ export default function AdminGroupsScreen({ navigation }) {
 
 function makeStyles(colors) {
     return StyleSheet.create({
-        root: { flex: 1, backgroundColor: colors.backgroundSecondary },
+        root: { flex: 1, backgroundColor: colors.background },
+
+        // ── Header ──
         header: {
-            backgroundColor: colors.background,
-            paddingHorizontal: 16,
-            paddingTop: 56,
-            paddingBottom: 12,
-            borderBottomWidth: 1,
-            borderBottomColor: colors.border,
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            zIndex: 10,
+            flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+            paddingHorizontal: 16, paddingTop: 56, paddingBottom: 12,
         },
-        title: { fontSize: 20, fontFamily: F.bold, color: colors.text },
+        title:         { fontSize: 26, fontFamily: F.bold, color: colors.text },
         createBtn: {
-            width: 48,
-            height: 48,
-            borderRadius: 12,
+            width: 40, height: 40, borderRadius: 12,
             backgroundColor: colors.primary,
-            alignItems: 'center',
-            justifyContent: 'center',
-            shadowColor: colors.primary,
-            shadowOffset: { width: 0, height: 4 },
-            shadowOpacity: 0.3,
-            shadowRadius: 12,
-            elevation: 4,
+            alignItems: 'center', justifyContent: 'center',
+            shadowColor: colors.primary, shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.3, shadowRadius: 8, elevation: 4,
         },
+
+        // ── Search ──
         searchWrap: {
-            flexDirection: 'row',
-            alignItems: 'center',
+            flexDirection: 'row', alignItems: 'center',
             backgroundColor: colors.backgroundSecondary,
-            marginHorizontal: 16,
-            marginTop: 12,
-            borderRadius: 10,
-            paddingHorizontal: 14,
-            height: 48,
-            borderWidth: 1,
-            borderColor: colors.border,
+            marginHorizontal: 14, marginBottom: 12,
+            borderRadius: 12, paddingHorizontal: 14, height: 48,
+            borderWidth: 1, borderColor: colors.border,
         },
-        searchInput:  { flex: 1, fontSize: 14, fontFamily: F.regular, color: colors.text },
-        countLabel: {
-            fontSize: 12,
-            fontFamily: F.semibold,
-            color: colors.textSecondary,
-            letterSpacing: 0.5,
-            paddingHorizontal: 16,
-            paddingTop: 12,
-            paddingBottom: 8,
+        searchInput: { flex: 1, fontSize: 14, fontFamily: F.regular, color: colors.text },
+
+        // ── Count + sort row ──
+        countRow: {
+            flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+            paddingHorizontal: 16, paddingBottom: 8,
         },
-        list:         { flex: 1, paddingHorizontal: 16 },
-        loadingBox:   { paddingTop: 60, alignItems: 'center' },
+        countLabel: { fontSize: 11, fontFamily: F.semibold, color: colors.textTertiary, letterSpacing: 0.6 },
+        sortRow:    { flexDirection: 'row', alignItems: 'center', gap: 6 },
+        sortPill: {
+            paddingHorizontal: 10, paddingVertical: 4,
+            borderRadius: 100, borderWidth: 1, borderColor: colors.border,
+            backgroundColor: colors.backgroundSecondary,
+        },
+        sortPillActive:     { backgroundColor: colors.primary, borderColor: colors.primary },
+        sortPillText:       { fontSize: 11, fontFamily: F.semibold, color: colors.textSecondary },
+        sortPillTextActive: { color: '#fff' },
+        compactBtn: {
+            width: 30, height: 30, borderRadius: 8,
+            borderWidth: 1, borderColor: colors.border,
+            backgroundColor: colors.backgroundSecondary,
+            alignItems: 'center', justifyContent: 'center',
+        },
+        compactBtnActive: { borderColor: colors.primary, backgroundColor: colors.primaryLight },
+
+        list:       { flex: 1 },
+        loadingBox: { paddingTop: 60, alignItems: 'center' },
         emptyCard: {
-            height: 200,
-            alignItems: 'center',
-            justifyContent: 'center',
-            borderRadius: 12,
-            borderWidth: 2,
-            borderStyle: 'dashed',
-            borderColor: colors.border,
-            marginTop: 8,
+            height: 200, alignItems: 'center', justifyContent: 'center',
+            borderRadius: 12, borderWidth: 2, borderStyle: 'dashed',
+            borderColor: colors.border, marginTop: 8,
         },
-        emptyText:    { fontSize: 14, fontFamily: F.regular, color: colors.textSecondary, marginTop: 12 },
+        emptyText: { fontSize: 14, fontFamily: F.regular, color: colors.textSecondary, marginTop: 12 },
+
+        // ── Card ──
         card: {
             backgroundColor: colors.background,
-            borderWidth: 1,
-            borderColor: colors.border,
-            borderRadius: 12,
-            marginBottom: 8,
-            padding: 12,
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: 2 },
-            shadowOpacity: 0.08,
-            shadowRadius: 8,
-            elevation: 3,
+            borderWidth: 1, borderColor: colors.border,
+            borderRadius: 14, padding: 14,
+            flexDirection: 'row', alignItems: 'center', gap: 10,
+            shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
+            shadowOpacity: 0.06, shadowRadius: 4, elevation: 2,
         },
-        cardHeader:   { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
-        groupName:    { fontSize: 14, fontFamily: F.bold, color: colors.text, flex: 1 },
-        cardActions:  { flexDirection: 'row', alignItems: 'center' },
-        iconBtn: {
-            width: 32,
-            height: 32,
-            borderRadius: 8,
-            backgroundColor: colors.backgroundSecondary,
-            alignItems: 'center',
-            justifyContent: 'center',
-            borderWidth: 1,
-            borderColor: colors.border,
-        },
-        cardMeta:     { fontSize: 13, fontFamily: F.regular, color: colors.textSecondary, marginBottom: 2 },
-        cardDetail:   { fontSize: 13, fontFamily: F.regular, color: colors.text },
+        cardCompact: { paddingVertical: 10 },
+        cardBody:    { flex: 1, minWidth: 0 },
+        groupName:   { fontSize: 15, fontFamily: F.bold, color: colors.text, marginBottom: 2 },
+        cardMeta:    { fontSize: 12, fontFamily: F.regular, color: colors.textSecondary, marginBottom: 2 },
+        cardDetail:  { fontSize: 12, fontFamily: F.regular, color: colors.textSecondary },
+        cardActions: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 },
+        iconBtn:     { alignItems: 'center', gap: 3, padding: 6, borderRadius: 8 },
+        iconLabel:   { fontSize: 9, fontFamily: F.medium, color: colors.textSecondary },
         overlay:      { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
         sheet: {
             backgroundColor: colors.background,
@@ -631,5 +667,6 @@ function makeStyles(colors) {
         otpConfirmText: { fontSize: 15, fontFamily: F.semibold, color: '#fff' },
         otpCancelBtn:   { marginTop: 10, paddingVertical: 10 },
         otpCancelText:  { fontSize: 14, fontFamily: F.medium, color: colors.textSecondary },
+
     });
 }

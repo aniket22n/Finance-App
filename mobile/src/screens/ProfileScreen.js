@@ -104,7 +104,7 @@ export default function ProfileScreen({ navigation }) {
                 >
                     <TouchableOpacity onPress={handlePickAvatar} activeOpacity={0.8}>
                         <View style={styles.avatarCircle}>
-                            <Text style={styles.avatarInitial}>{initials}</Text>
+                            <Ionicons name="person" size={36} color="#fff" />
                         </View>
                     </TouchableOpacity>
                     <View style={styles.profileInfo}>

@@ -245,6 +245,7 @@ export default function AdminPaymentsScreen({ navigation, route }) {
 
     const [statusOpen, setStatusOpen] = useState(false);
     const [infoOpen,   setInfoOpen]   = useState(false);
+    const [compact,    setCompact]    = useState(false);
 
     useEffect(() => {
         const { activeFilter, group: inGroup, month: inMonth } = route?.params || {};
@@ -345,9 +346,18 @@ export default function AdminPaymentsScreen({ navigation, route }) {
                 </View>
             </View>
 
-            <Text style={styles.countLabel}>
-                {payments.length} PAYMENT{payments.length !== 1 ? 'S' : ''}
-            </Text>
+            <View style={styles.countRow}>
+                <Text style={styles.countLabel}>
+                    {payments.length} PAYMENT{payments.length !== 1 ? 'S' : ''}
+                </Text>
+                <TouchableOpacity
+                    style={[styles.compactBtn, compact && styles.compactBtnActive]}
+                    onPress={() => setCompact(v => !v)}
+                    activeOpacity={0.75}
+                >
+                    <Ionicons name={compact ? 'list' : 'reorder-four'} size={16} color={compact ? colors.primary : colors.textSecondary} />
+                </TouchableOpacity>
+            </View>
 
             <ScrollView
                 style={styles.list}
@@ -364,10 +374,10 @@ export default function AdminPaymentsScreen({ navigation, route }) {
                     </View>
                 ) : (
                     payments.map(p => {
-                        const badge   = BADGE[p.status] || { bg: colors.border, label: p.status };
-                        const initial = (p.user?.name || p.user?.phone || '?').charAt(0).toUpperCase();
+                        const badge      = BADGE[p.status] || { bg: colors.border, label: p.status };
+                        const initial    = (p.user?.name || p.user?.phone || '?').charAt(0).toUpperCase();
                         const isRejected = p.status === 'failed' || p.status === 'rejected';
-                        const gl = groupLabel(p.group);
+                        const gl         = groupLabel(p.group);
                         return (
                             <TouchableOpacity
                                 key={p._id}
@@ -375,15 +385,16 @@ export default function AdminPaymentsScreen({ navigation, route }) {
                                 onPress={() => navigation.navigate('AdminPaymentDetail', { payment: p })}
                                 activeOpacity={0.75}
                             >
-                                <View style={styles.cardInner}>
-                                    {/* Avatar */}
-                                    <View style={styles.avatar}>
-                                        <Text style={styles.avatarTxt}>{initial}</Text>
-                                    </View>
+                                <View style={[styles.cardInner, compact && styles.cardInnerCompact]}>
+                                    {/* Avatar — hidden in compact */}
+                                    {!compact && (
+                                        <View style={styles.avatar}>
+                                            <Ionicons name="person" size={20} color={colors.textSecondary} />
+                                        </View>
+                                    )}
 
                                     {/* Content */}
                                     <View style={styles.cardBody}>
-                                        {/* Row 1: name + status badge */}
                                         <View style={styles.nameRow}>
                                             <Text style={styles.name} numberOfLines={1}>
                                                 {p.user?.name || p.user?.phone || 'Member'}
@@ -392,19 +403,21 @@ export default function AdminPaymentsScreen({ navigation, route }) {
                                                 <Text style={styles.badgeTxt}>{badge.label}</Text>
                                             </View>
                                         </View>
-                                        {/* Row 2: amount · method · time (bold) */}
+                                        {/* Row 2: amount · method · time */}
                                         <Text style={styles.meta} numberOfLines={1}>
                                             {'₹'}{p.amount?.toLocaleString('en-IN')}
                                             {' · '}{(p.paymentMethod || 'UPI').toUpperCase()}
                                             {' · '}{timeAgo(p.paidAt || p.createdAt)}
                                         </Text>
-                                        {/* Row 3: month · group (faint) */}
-                                        {gl ? (
-                                            <Text style={styles.groupName} numberOfLines={1}>
-                                                {'Month '}{p.month}{' · '}{gl}
-                                            </Text>
-                                        ) : (
-                                            <Text style={styles.groupName}>{'Month '}{p.month}</Text>
+                                        {/* Row 3: month · group — hidden in compact */}
+                                        {!compact && (
+                                            gl ? (
+                                                <Text style={styles.groupName} numberOfLines={1}>
+                                                    {'Month '}{p.month}{' · '}{gl}
+                                                </Text>
+                                            ) : (
+                                                <Text style={styles.groupName}>{'Month '}{p.month}</Text>
+                                            )
                                         )}
                                     </View>
                                 </View>
@@ -477,10 +490,18 @@ function makeStyles(colors) {
         doneTxt: { fontSize: 15, fontFamily: F.semibold, color: '#fff' },
 
         // ── Count ──
-        countLabel: {
-            fontSize: 11, fontFamily: F.semibold, color: colors.textTertiary,
-            letterSpacing: 0.6, paddingHorizontal: 16, paddingBottom: 6,
+        countRow: {
+            flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+            paddingHorizontal: 16, paddingBottom: 6,
         },
+        countLabel: { fontSize: 11, fontFamily: F.semibold, color: colors.textTertiary, letterSpacing: 0.6 },
+        compactBtn: {
+            width: 30, height: 30, borderRadius: 8,
+            borderWidth: 1, borderColor: colors.border,
+            backgroundColor: colors.backgroundSecondary,
+            alignItems: 'center', justifyContent: 'center',
+        },
+        compactBtnActive: { borderColor: colors.primary, backgroundColor: colors.primaryLight },
 
         // ── List ──
         list:        { flex: 1 },
@@ -500,13 +521,14 @@ function makeStyles(colors) {
         cardRejected: {
             borderLeftWidth: 3, borderLeftColor: '#EF4444',
         },
-        cardInner: { flexDirection: 'row', alignItems: 'center', padding: 14, gap: 12 },
+        cardInner:        { flexDirection: 'row', alignItems: 'center', padding: 14, gap: 12 },
+        cardInnerCompact: { padding: 10, gap: 10 },
         avatar: {
             width: 44, height: 44, borderRadius: 22,
-            backgroundColor: colors.primary + '1A',
+            backgroundColor: colors.backgroundSecondary,
             alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+            borderWidth: 1, borderColor: colors.border,
         },
-        avatarTxt: { fontSize: 16, fontFamily: F.bold, color: colors.primary },
         cardBody:  { flex: 1, minWidth: 0 },
         nameRow:  { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
         name:     { flex: 1, fontSize: 15, fontFamily: F.bold, color: colors.text },

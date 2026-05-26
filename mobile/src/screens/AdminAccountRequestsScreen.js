@@ -187,13 +187,12 @@ export default function AdminAccountRequestsScreen({ navigation }) {
                     requests.map(r => {
                         const badge   = BADGE[r.status] || { bg: colors.border, label: r.status };
                         const isBusy  = actionBusy === r._id;
-                        const initial = (r.name || r.phone || '?').charAt(0).toUpperCase();
                         const isPending = r.status === 'pending';
                         return (
                             <View key={r._id} style={styles.card}>
                                 <View style={styles.cardTop}>
                                     <View style={styles.avatar}>
-                                        <Text style={styles.avatarTxt}>{initial}</Text>
+                                        <Ionicons name="person" size={16} color={colors.textSecondary} />
                                     </View>
                                     <View style={styles.info}>
                                         <View style={styles.nameRow}>
@@ -343,11 +342,10 @@ function makeStyles(colors) {
         cardTop:  { flexDirection: 'row', alignItems: 'center' },
         avatar: {
             width: 34, height: 34, borderRadius: 17,
-            backgroundColor: colors.primaryLight,
+            backgroundColor: colors.backgroundSecondary,
             alignItems: 'center', justifyContent: 'center',
             marginRight: 10, borderWidth: 1, borderColor: colors.border,
         },
-        avatarTxt: { fontSize: 13, fontFamily: F.bold, color: colors.primary },
         info:      { flex: 1, minWidth: 0 },
         nameRow:   { flexDirection: 'row', alignItems: 'center', gap: 6 },
         name:      { flex: 1, fontSize: 13, fontFamily: F.bold, color: colors.text },

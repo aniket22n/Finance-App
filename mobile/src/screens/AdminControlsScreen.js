@@ -654,16 +654,13 @@ export default function AdminControlsScreen({ navigation }) {
                         </View>
                     ) : (
                         filteredUsers.map(u => {
-                            const initial = (u.name || u.phone || '?').charAt(0).toUpperCase();
                             const grps    = u.groups || [];
                             const isAdmin = u.role === 'admin';
                             return (
                                 <View key={u._id} style={[styles.userCard, isAdmin && styles.userCardAdmin]}>
                                     <View style={styles.userCardTop}>
                                         <View style={[styles.userCardAvatar, isAdmin && styles.userCardAvatarAdmin]}>
-                                            <Text style={[styles.userCardAvatarTxt, isAdmin && { color: '#fff' }]}>
-                                                {initial}
-                                            </Text>
+                                            <Ionicons name="person" size={15} color={isAdmin ? '#fff' : colors.textSecondary} />
                                         </View>
                                         <View style={styles.userCardMid}>
                                             <Text style={styles.userCardName} numberOfLines={1}>
@@ -1011,12 +1008,11 @@ function makeStyles(colors) {
         userCardTop:    { flexDirection: 'row', alignItems: 'center' },
         userCardAvatar: {
             width: 32, height: 32, borderRadius: 16,
-            backgroundColor: colors.primaryLight,
+            backgroundColor: colors.backgroundSecondary,
             alignItems: 'center', justifyContent: 'center',
             marginRight: 10, borderWidth: 1, borderColor: colors.border,
         },
-        userCardAvatarAdmin: { backgroundColor: colors.primary, borderColor: colors.primary },
-        userCardAvatarTxt:   { fontSize: 13, fontFamily: F.bold, color: colors.primary },
+        userCardAvatarAdmin: { backgroundColor: colors.textSecondary, borderColor: colors.textSecondary },
         userCardMid:         { flex: 1 },
         userCardName:        { fontSize: 13, fontFamily: F.semibold, color: colors.text },
         userCardPhone:       { fontSize: 11, fontFamily: F.regular, color: colors.textSecondary, marginTop: 1 },

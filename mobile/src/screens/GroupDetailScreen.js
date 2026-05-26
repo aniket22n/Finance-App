@@ -131,6 +131,7 @@ export default function GroupDetailScreen({ route, navigation }) {
         }
     };
 
+    const [timelineMember, setTimelineMember] = useState(null);
     const [activating, setActivating] = useState(false);
     const handleActivate = async () => {
         if (activating) return;
@@ -225,23 +226,6 @@ export default function GroupDetailScreen({ route, navigation }) {
                     </View>
                 </View>
 
-                {/* Current Winner */}
-                {cycle && (
-                    <View style={styles.winnerCard}>
-                        <View style={styles.winnerLeft}>
-                            <View style={styles.trophyCircle}>
-                                <Ionicons name="trophy" size={22} color={colors.primary} />
-                            </View>
-                            <View>
-                                <Text style={styles.winnerLabel}>Month {cycle.month} Pot Holder</Text>
-                                <Text style={styles.winnerName}>{cycle.winner?.name || 'Unknown'}</Text>
-                            </View>
-                        </View>
-                        <View style={styles.reducedBadge}>
-                            <Text style={styles.reducedText}>₹{group.emiAmount?.toLocaleString()} EMI</Text>
-                        </View>
-                    </View>
-                )}
 
                 {/* Members */}
                 <View style={styles.section}>
@@ -255,8 +239,7 @@ export default function GroupDetailScreen({ route, navigation }) {
                                 onPress={() => navigation.navigate('AdminAddMembers', { groupId, mode: 'manage' })}
                                 activeOpacity={0.75}
                             >
-                                <Ionicons name="person-add-outline" size={14} color={colors.primary} />
-                                <Text style={styles.addMemberText}>Add</Text>
+                                <Ionicons name="add" size={20} color={colors.primary} />
                             </TouchableOpacity>
                         )}
                     </View>
@@ -276,6 +259,7 @@ export default function GroupDetailScreen({ route, navigation }) {
                                 winnerMonth={wonMonth}
                                 paymentStatus={memberPayment?.status}
                                 emiAmount={(isWinner || isPastWinner) ? group.emiAmount : group.reducedEmi}
+                                onPress={() => setTimelineMember(member)}
                             />
                         );
                     })}
@@ -391,6 +375,142 @@ export default function GroupDetailScreen({ route, navigation }) {
                 </View>
             </Modal>
 
+            {/* ── Payment Timeline Modal ── */}
+            {(() => {
+                const TL_STATUS = {
+                    pending:  { color: '#9CA3AF', label: 'Pending'  },
+                    paid:     { color: '#F59E0B', label: 'Awaiting' },
+                    verified: { color: '#10B981', label: 'Verified' },
+                    failed:   { color: '#EF4444', label: 'Rejected' },
+                    rejected: { color: '#EF4444', label: 'Rejected' },
+                };
+
+                const real = payments
+                    .filter(p => (p.user?._id || p.user) === timelineMember?._id)
+                    .sort((a, b) => a.month - b.month);
+
+                const dummyCount = Math.max(currentMonth || 0, 4);
+                const DUMMY = [
+                    { status: 'verified', method: 'upi'  },
+                    { status: 'paid',     method: 'cash' },
+                    { status: 'pending',  method: 'bank' },
+                    { status: 'rejected', method: 'upi'  },
+                    { status: 'paid',     method: 'upi'  },
+                ];
+                const dummy = Array.from({ length: Math.min(dummyCount, 5) }, (_, i) => ({
+                    _id: `dummy-${i}`,
+                    month: i + 1,
+                    status: DUMMY[i].status,
+                    amount: group?.emiAmount || 5000,
+                    paymentMethod: DUMMY[i].method,
+                    paidAt: new Date(Date.now() - (dummyCount - i) * 30 * 24 * 60 * 60 * 1000).toISOString(),
+                }));
+
+                const memberPayments = real.length > 0 ? real : dummy;
+                const totalPaid = memberPayments.filter(p => p.status === 'verified' || p.status === 'paid').length;
+                const totalAmt  = memberPayments
+                    .filter(p => p.status === 'verified' || p.status === 'paid')
+                    .reduce((s, p) => s + (p.amount || 0), 0);
+
+                return (
+                    <Modal
+                        visible={!!timelineMember}
+                        animationType="slide"
+                        onRequestClose={() => setTimelineMember(null)}
+                        statusBarTranslucent
+                    >
+                        <View style={styles.tlRoot}>
+
+                            {/* Top bar */}
+                            <View style={styles.tlTopBar}>
+                                <TouchableOpacity
+                                    onPress={() => setTimelineMember(null)}
+                                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                >
+                                    <Ionicons name="arrow-back" size={22} color={colors.text} />
+                                </TouchableOpacity>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={styles.tlTitle}>Payment History</Text>
+                                    <Text style={styles.tlGroupName} numberOfLines={1}>{group?.name}</Text>
+                                </View>
+                            </View>
+
+                            {/* Member info card */}
+                            <View style={styles.tlMemberCard}>
+                                <View style={styles.tlMemberIcon}>
+                                    <Ionicons name="person" size={16} color={colors.textSecondary} />
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={styles.tlName}>{timelineMember?.name || timelineMember?.phone}</Text>
+                                    {timelineMember?.name && timelineMember?.phone
+                                        ? <Text style={styles.tlPhone}>{timelineMember.phone}</Text>
+                                        : null}
+                                </View>
+                                <View style={styles.tlMemberStat}>
+                                    <Text style={styles.tlMemberStatVal}>₹{totalAmt.toLocaleString('en-IN')}</Text>
+                                    <Text style={styles.tlMemberStatLbl}>{totalPaid} paid</Text>
+                                </View>
+                            </View>
+
+                            {/* Status chips — centered single line */}
+                            <View style={styles.tlChipsRow}>
+                                {Object.entries(TL_STATUS).map(([key, { color, label }]) => {
+                                    const count = memberPayments.filter(p => p.status === key).length;
+                                    if (!count) return null;
+                                    return (
+                                        <View key={key} style={[styles.tlChip, { backgroundColor: color + '18' }]}>
+                                            <Text style={[styles.tlChipNum, { color }]}>{count}</Text>
+                                            <Text style={[styles.tlChipLbl, { color }]}>{label}</Text>
+                                        </View>
+                                    );
+                                })}
+                            </View>
+
+                            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.tlScrollContent}>
+                                {memberPayments.map((p, idx) => {
+                                    const isLast = idx === memberPayments.length - 1;
+                                    const st    = TL_STATUS[p.status] || TL_STATUS.pending;
+                                    const date  = p.paidAt || p.createdAt;
+                                    return (
+                                        <TouchableOpacity
+                                            key={p._id}
+                                            style={styles.tlRow}
+                                            activeOpacity={0.75}
+                                            onPress={() => {
+                                                setTimelineMember(null);
+                                                navigation.navigate('AdminPaymentDetail', { payment: p });
+                                            }}
+                                        >
+                                            {/* Spine */}
+                                            <View style={styles.tlSpine}>
+                                                <View style={[styles.tlDot, { backgroundColor: st.color }]} />
+                                                {!isLast && <View style={styles.tlLine} />}
+                                            </View>
+                                            {/* Row content */}
+                                            <View style={[styles.tlItem, isLast && { borderBottomWidth: 0 }]}>
+                                                <View style={styles.tlItemLeft}>
+                                                    <Text style={styles.tlMonth}>Month {p.month}</Text>
+                                                    {date ? (
+                                                        <Text style={styles.tlDate}>
+                                                            {new Date(date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                                            {'  ·  '}{(p.paymentMethod || 'UPI').toUpperCase()}
+                                                        </Text>
+                                                    ) : null}
+                                                </View>
+                                                <View style={styles.tlItemRight}>
+                                                    <Text style={[styles.tlAmount, { color: st.color }]}>₹{(p.amount || 0).toLocaleString('en-IN')}</Text>
+                                                    <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+                                                </View>
+                                            </View>
+                                        </TouchableOpacity>
+                                    );
+                                })}
+                            </ScrollView>
+                        </View>
+                    </Modal>
+                );
+            })()}
+
             <Toast {...toast} />
         </View>
     );
@@ -429,42 +549,37 @@ function makeStyles(colors) {
         statsRow:    { flexDirection: 'row', alignItems: 'center', paddingTop: 16, borderTopWidth: 1, borderTopColor: colors.border },
         statDivider: { width: 1, height: 32, backgroundColor: colors.border },
         winnerCard: {
-            backgroundColor: colors.primaryLight,
-            borderWidth: 1,
-            borderColor: colors.status.rejected.border,
-            borderRadius: 14,
-            padding: 16,
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: 2 },
-            shadowOpacity: 0.08,
-            shadowRadius: 8,
-            elevation: 3,
-            marginHorizontal: 16,
-            marginBottom: 12,
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
+            flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+            marginHorizontal: 16, marginBottom: 12,
+            backgroundColor: '#FFFBEB',
+            borderWidth: 1, borderColor: '#FDE68A',
+            borderRadius: 14, padding: 14,
+            shadowColor: '#F59E0B', shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.1, shadowRadius: 6, elevation: 2,
         },
-        winnerLeft:  { flexDirection: 'row', alignItems: 'center', flex: 1 },
-        trophyCircle: {
-            width: 44, height: 44, borderRadius: 22,
-            backgroundColor: colors.primaryLight, alignItems: 'center', justifyContent: 'center',
-            marginRight: 12, borderWidth: 1, borderColor: colors.status.rejected.border,
+        winnerCardLeft:  { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+        winnerTrophy: {
+            width: 44, height: 44, borderRadius: 12,
+            backgroundColor: '#FEF3C7', borderWidth: 1, borderColor: '#FDE68A',
+            alignItems: 'center', justifyContent: 'center',
         },
-        winnerLabel:  { fontSize: 11, fontFamily: F.medium, color: colors.primary },
-        winnerName:   { fontSize: 16, fontFamily: F.semibold, color: colors.primaryDark, marginTop: 2 },
-        reducedBadge: { backgroundColor: colors.primaryLight, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1, borderColor: colors.status.rejected.border },
-        reducedText:  { fontSize: 12, fontFamily: F.semibold, color: colors.primary },
+        winnerCardLabel: { fontSize: 10, fontFamily: F.semibold, color: '#92400E', letterSpacing: 0.5, marginBottom: 3 },
+        winnerCardName:  { fontSize: 16, fontFamily: F.bold, color: '#78350F' },
+        winnerAmtBadge: {
+            backgroundColor: '#FEF3C7', borderWidth: 1, borderColor: '#FDE68A',
+            borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5,
+        },
+        winnerAmtText:  { fontSize: 13, fontFamily: F.bold, color: '#92400E' },
         section:      { paddingHorizontal: 16, marginBottom: 8 },
         sectionHeader:{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8, marginBottom: 4 },
         sectionTitle: { fontSize: 16, fontFamily: F.medium, color: colors.text },
         sectionSub:   { fontSize: 11, fontFamily: F.regular, color: colors.textSecondary, marginBottom: 10 },
         addMemberBtn: {
-            flexDirection: 'row', alignItems: 'center', gap: 4,
-            backgroundColor: colors.primaryLight, borderWidth: 1, borderColor: colors.status.rejected.border,
-            borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5,
+            width: 32, height: 32, borderRadius: 8,
+            backgroundColor: colors.primaryLight,
+            borderWidth: 1, borderColor: colors.primary,
+            alignItems: 'center', justifyContent: 'center',
         },
-        addMemberText:  { fontSize: 12, fontFamily: F.semibold, color: colors.primary },
         ctaSection:     { paddingHorizontal: 16, marginTop: 8 },
         ctaBtn: {
             flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
@@ -518,5 +633,60 @@ function makeStyles(colors) {
         otpConfirmText: { fontSize: 15, fontFamily: F.semibold, color: '#fff' },
         otpCancelBtn:   { marginTop: 10, paddingVertical: 10 },
         otpCancelText:  { fontSize: 14, fontFamily: F.medium, color: colors.textSecondary },
+
+        // ── Payment timeline (full-screen modal) ──
+        tlRoot: { flex: 1, backgroundColor: colors.background },
+        tlTopBar: {
+            flexDirection: 'row', alignItems: 'center', gap: 14,
+            paddingTop: 52, paddingBottom: 10, paddingHorizontal: 16,
+            borderBottomWidth: 1, borderBottomColor: colors.border,
+        },
+        tlTitle:     { fontSize: 16, fontFamily: F.bold, color: colors.text, lineHeight: 20 },
+        tlGroupName: { fontSize: 11, fontFamily: F.regular, color: colors.textSecondary, marginTop: 1 },
+        tlMemberCard: {
+            flexDirection: 'row', alignItems: 'center', gap: 10,
+            marginHorizontal: 16, marginTop: 12, marginBottom: 14,
+            backgroundColor: colors.backgroundSecondary,
+            borderWidth: 1, borderColor: colors.border,
+            borderRadius: 14, padding: 12,
+        },
+        tlMemberIcon: {
+            width: 36, height: 36, borderRadius: 10,
+            backgroundColor: colors.backgroundSecondary,
+            borderWidth: 1, borderColor: colors.border,
+            alignItems: 'center', justifyContent: 'center',
+        },
+        tlName:          { fontSize: 14, fontFamily: F.bold, color: colors.text },
+        tlPhone:         { fontSize: 11, fontFamily: F.regular, color: colors.textSecondary, marginTop: 1 },
+        tlMemberStat:    { alignItems: 'flex-end' },
+        tlMemberStatVal: { fontSize: 14, fontFamily: F.bold, color: colors.primary },
+        tlMemberStatLbl: { fontSize: 10, fontFamily: F.regular, color: colors.textSecondary, marginTop: 1 },
+        tlChipsRow: {
+            flexDirection: 'row', justifyContent: 'center',
+            gap: 10, paddingHorizontal: 16, paddingBottom: 14,
+        },
+        tlChip: {
+            alignItems: 'center', paddingHorizontal: 14, paddingVertical: 8,
+            borderRadius: 12,
+        },
+        tlChipNum: { fontSize: 20, fontFamily: F.bold, lineHeight: 24 },
+        tlChipLbl: { fontSize: 10, fontFamily: F.medium, marginTop: 2 },
+        tlScrollContent: { paddingTop: 4, paddingBottom: 40 },
+        tlRow:   { flexDirection: 'row', paddingLeft: 16 },
+        tlSpine: { alignItems: 'center', width: 20, paddingTop: 18 },
+        tlDot:   { width: 10, height: 10, borderRadius: 5, flexShrink: 0 },
+        tlLine:  { width: 2, flexGrow: 1, backgroundColor: colors.border, marginTop: 4, minHeight: 28 },
+        tlItem: {
+            flex: 1, flexDirection: 'row', alignItems: 'center',
+            paddingVertical: 12, paddingRight: 16, gap: 8,
+            borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border,
+        },
+        tlItemLeft:  { flex: 1 },
+        tlItemRight: { alignItems: 'flex-end', gap: 4 },
+        tlMonth:    { fontSize: 13, fontFamily: F.semibold, color: colors.text },
+        tlBadge:    { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 5, borderWidth: 1 },
+        tlBadgeTxt: { fontSize: 9, fontFamily: F.bold },
+        tlAmount:   { fontSize: 14, fontFamily: F.bold, color: colors.text },
+        tlDate:     { fontSize: 11, fontFamily: F.regular, color: colors.textSecondary },
     });
 }

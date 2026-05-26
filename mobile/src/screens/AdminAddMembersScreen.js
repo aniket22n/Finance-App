@@ -246,9 +246,7 @@ export default function AdminAddMembersScreen({ route, navigation }) {
                             activeOpacity={0.7}
                         >
                             <View style={[styles.avatar, isMember && styles.avatarMember]}>
-                                <Text style={[styles.avatarTxt, isMember && { color: '#fff' }]}>
-                                    {(item.name || item.phone || 'U').charAt(0).toUpperCase()}
-                                </Text>
+                                <Ionicons name="person" size={18} color={isMember ? '#fff' : colors.textSecondary} />
                             </View>
                             <View style={styles.info}>
                                 <Text style={styles.name}>{item.name || 'No name'}</Text>
@@ -396,12 +394,11 @@ function makeStyles(colors) {
         rowMember: {},
         avatar: {
             width: 40, height: 40, borderRadius: 20,
-            backgroundColor: colors.primaryLight,
+            backgroundColor: colors.backgroundSecondary,
             alignItems: 'center', justifyContent: 'center',
             marginRight: 12, borderWidth: 1, borderColor: colors.border,
         },
-        avatarMember: { backgroundColor: colors.primary, borderColor: colors.primary },
-        avatarTxt:    { fontSize: 16, fontFamily: F.bold, color: colors.primary },
+        avatarMember: { backgroundColor: colors.textSecondary, borderColor: colors.textSecondary },
         info:         { flex: 1 },
         name:         { fontSize: 14, fontFamily: F.semibold, color: colors.text },
         phone:        { fontSize: 12, fontFamily: F.regular, color: colors.textSecondary, marginTop: 1 },

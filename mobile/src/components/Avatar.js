@@ -1,15 +1,11 @@
 import React from 'react';
-import { View, Text, Image, StyleSheet } from 'react-native';
+import { View, Image, StyleSheet } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
-import { F } from '../theme';
 
-export default function Avatar({ uri, name, size = 60, style }) {
+export default function Avatar({ uri, size = 60, style }) {
     const { colors } = useTheme();
     const styles = makeStyles(colors);
-
-    const initials = name
-        ? name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
-        : '?';
 
     if (uri) {
         return (
@@ -22,7 +18,7 @@ export default function Avatar({ uri, name, size = 60, style }) {
 
     return (
         <View style={[styles.placeholder, { width: size, height: size, borderRadius: size / 2 }, style]}>
-            <Text style={[styles.initials, { fontSize: size * 0.35 }]}>{initials}</Text>
+            <Ionicons name="person" size={size * 0.45} color={colors.textSecondary} />
         </View>
     );
 }
@@ -30,19 +26,15 @@ export default function Avatar({ uri, name, size = 60, style }) {
 function makeStyles(colors) {
     return StyleSheet.create({
         image: {
-            borderWidth: 2,
-            borderColor: colors.primary,
+            borderWidth: 1,
+            borderColor: colors.border,
         },
         placeholder: {
-            backgroundColor: colors.primaryLight,
-            borderWidth: 2,
-            borderColor: colors.primary,
+            backgroundColor: colors.backgroundSecondary,
+            borderWidth: 1,
+            borderColor: colors.border,
             alignItems: 'center',
             justifyContent: 'center',
-        },
-        initials: {
-            color: colors.primary,
-            fontFamily: F.bold,
         },
     });
 }

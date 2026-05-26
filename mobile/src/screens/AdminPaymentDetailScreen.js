@@ -205,8 +205,8 @@ export default function AdminPaymentDetailScreen({ route, navigation }) {
                         {/* Member */}
                         <InfoRow label="Member" colors={colors} noBorder>
                             <View style={styles.memberRow}>
-                                <View style={[styles.memberAvatar, { backgroundColor: colors.primary + '22' }]}>
-                                    <Text style={[styles.memberInitial, { color: colors.primary }]}>{memberInitial}</Text>
+                                <View style={[styles.memberAvatar, { backgroundColor: colors.backgroundSecondary }]}>
+                                    <Text style={[styles.memberInitial, { color: colors.textSecondary }]}>{memberInitial}</Text>
                                 </View>
                                 <Text style={[styles.memberName, { color: colors.text }]}>
                                     {payment.user?.name || payment.user?.phone || '—'}
