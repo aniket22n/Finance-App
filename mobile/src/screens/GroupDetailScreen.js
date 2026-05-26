@@ -602,7 +602,7 @@ function makeStyles(colors) {
         deleteBtn: {
             flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
             height: 52, borderRadius: 12, borderWidth: 1.5,
-            borderColor: colors.status.rejected.border, backgroundColor: colors.errorLight,
+            borderColor: colors.status.rejected.border, backgroundColor: 'transparent',
         },
         deleteBtnText: { fontSize: 14, fontFamily: F.semibold, color: colors.error },
         // OTP modal

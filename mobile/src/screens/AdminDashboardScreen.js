@@ -337,15 +337,14 @@ function makeStyles(colors) {
 
     header: {
       flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-      paddingTop: 56, paddingBottom: 12, paddingHorizontal: 16,
-      borderBottomWidth: 1, borderBottomColor: colors.border,
-      backgroundColor: colors.background,
+      paddingTop: 56, paddingBottom: 8, paddingHorizontal: 16,
+      backgroundColor: colors.backgroundSecondary,
     },
     greeting:    { fontSize: 12, fontFamily: F.regular, color: colors.textSecondary },
-    headerTitle: { fontSize: 22, fontFamily: F.bold, color: colors.text },
+    headerTitle: { fontSize: 26, fontFamily: F.bold, color: colors.text },
 
     // Summary
-    summaryRow: { flexDirection: 'row', paddingHorizontal: 16, paddingTop: 14, gap: 10 },
+    summaryRow: { flexDirection: 'row', paddingHorizontal: 16, paddingTop: 6, gap: 10 },
     summaryCard: {
       flex: 1, borderRadius: 14, padding: 12,
       shadowColor: '#000', shadowOffset: { width: 0, height: 3 },

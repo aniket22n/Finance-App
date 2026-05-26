@@ -11,17 +11,12 @@ import { F } from '../theme';
 import Toast, { useToast } from '../components/Toast';
 
 const FILTERS = [
-    { id: 'all',      label: 'All' },
-    { id: 'pending',  label: 'Pending' },
-    { id: 'approved', label: 'Approved' },
+    { id: 'all',      label: 'All',      icon: 'people-outline' },
+    { id: 'pending',  label: 'Pending',  icon: 'time-outline',             iconColor: '#F59E0B' },
+    { id: 'approved', label: 'Approved', icon: 'checkmark-circle-outline', iconColor: '#10B981' },
     // 'rejected' tab dropped — rejected requests are deleted on reject so the user can
     // re-apply later.
 ];
-
-const BADGE = {
-    pending:  { bg: '#F59E0B', label: 'Pending' },
-    approved: { bg: '#10B981', label: 'Approved' },
-};
 
 function timeAgo(dateStr) {
     if (!dateStr) return '—';
@@ -125,8 +120,6 @@ export default function AdminAccountRequestsScreen({ navigation }) {
         }
     };
 
-    const pendingCount = requests.filter(r => r.status === 'pending').length;
-
     return (
         <View style={styles.root}>
             {/* Header */}
@@ -135,11 +128,6 @@ export default function AdminAccountRequestsScreen({ navigation }) {
                     <Ionicons name="arrow-back" size={22} color={colors.text} />
                 </TouchableOpacity>
                 <Text style={styles.title}>Account Requests</Text>
-                {pendingCount > 0 && (
-                    <View style={styles.headerBadge}>
-                        <Text style={styles.headerBadgeText}>{pendingCount}</Text>
-                    </View>
-                )}
             </View>
 
             {/* Filter Pills */}
@@ -149,24 +137,34 @@ export default function AdminAccountRequestsScreen({ navigation }) {
                 contentContainerStyle={styles.pillsRow}
                 style={styles.pillsScroll}
             >
-                {FILTERS.map(f => (
-                    <TouchableOpacity
-                        key={f.id}
-                        style={[styles.pill, filter === f.id && styles.pillActive]}
-                        onPress={() => switchFilter(f.id)}
-                        activeOpacity={0.75}
-                    >
-                        <Text style={[styles.pillText, filter === f.id && styles.pillTextActive]}>
-                            {f.label}
-                        </Text>
-                    </TouchableOpacity>
-                ))}
+                {FILTERS.map(f => {
+                    const active = filter === f.id;
+                    return (
+                        <TouchableOpacity
+                            key={f.id}
+                            style={[styles.pill, active && styles.pillActive]}
+                            onPress={() => switchFilter(f.id)}
+                            activeOpacity={0.75}
+                        >
+                            <Ionicons
+                                name={f.icon}
+                                size={15}
+                                color={active ? '#fff' : f.iconColor || colors.textSecondary}
+                            />
+                            <Text style={[styles.pillText, active && styles.pillTextActive]}>
+                                {f.label}
+                            </Text>
+                        </TouchableOpacity>
+                    );
+                })}
             </ScrollView>
 
             {/* Count */}
-            <Text style={styles.countLabel}>
-                {filter.toUpperCase()} REQUESTS ({requests.length})
-            </Text>
+            <View style={styles.countWrap}>
+                <Text style={styles.countLabel}>
+                    {filter === 'all' ? 'All' : filter === 'pending' ? 'Pending' : 'Approved'} Requests ({requests.length})
+                </Text>
+            </View>
 
             {/* List */}
             <ScrollView
@@ -185,59 +183,60 @@ export default function AdminAccountRequestsScreen({ navigation }) {
                     </View>
                 ) : (
                     requests.map(r => {
-                        const badge   = BADGE[r.status] || { bg: colors.border, label: r.status };
                         const isBusy  = actionBusy === r._id;
                         const isPending = r.status === 'pending';
                         return (
-                            <View key={r._id} style={styles.card}>
+                            <View key={r._id} style={[styles.card, isPending && styles.cardPending]}>
                                 <View style={styles.cardTop}>
                                     <View style={styles.avatar}>
-                                        <Ionicons name="person" size={16} color={colors.textSecondary} />
+                                        <Ionicons name="person" size={18} color={colors.textSecondary} />
                                     </View>
                                     <View style={styles.info}>
-                                        <View style={styles.nameRow}>
-                                            <Text style={styles.name} numberOfLines={1}>{r.name}</Text>
-                                            <View style={[styles.badge, { backgroundColor: badge.bg }]}>
-                                                <Text style={styles.badgeText}>{badge.label}</Text>
-                                            </View>
-                                        </View>
+                                        <Text style={styles.name} numberOfLines={1}>{r.name}</Text>
                                         <Text style={styles.metaLine} numberOfLines={1}>
                                             +91 {r.phone}
                                             <Text style={styles.metaDot}>  ·  </Text>
                                             {timeAgo(r.createdAt)}
                                         </Text>
-                                        {!isPending && r.reviewedAt ? (
-                                            <Text style={styles.reviewed} numberOfLines={1}>
-                                                {r.status === 'approved' ? 'Approved' : 'Rejected'} {timeAgo(r.reviewedAt)}
-                                                {r.reviewedBy?.name ? ` by ${r.reviewedBy.name}` : ''}
-                                            </Text>
-                                        ) : null}
                                     </View>
+                                    {/* Status pill */}
+                                    {isPending ? (
+                                        <View style={styles.pendingPill}>
+                                            <Ionicons name="time-outline" size={18} color="#F59E0B" />
+                                        </View>
+                                    ) : (
+                                        <View style={styles.approvedPill}>
+                                            <Ionicons name="checkmark-circle" size={18} color="#10B981" />
+                                        </View>
+                                    )}
                                 </View>
 
                                 {isPending && (
-                                    <View style={styles.actions}>
-                                        <TouchableOpacity
-                                            style={[styles.approveBtn, isBusy && styles.btnDisabled]}
-                                            onPress={() => handleApprove(r)}
-                                            disabled={!!actionBusy}
-                                            activeOpacity={0.8}
-                                        >
-                                            {isBusy
-                                                ? <ActivityIndicator color="#fff" size="small" />
-                                                : <><Ionicons name="checkmark" size={13} color="#fff" /><Text style={styles.approveBtnText}>Approve</Text></>
-                                            }
-                                        </TouchableOpacity>
-                                        <TouchableOpacity
-                                            style={[styles.rejectBtn, isBusy && styles.btnDisabled]}
-                                            onPress={() => openRejectModal(r)}
-                                            disabled={!!actionBusy}
-                                            activeOpacity={0.8}
-                                        >
-                                            <Ionicons name="close" size={13} color="#fff" />
-                                            <Text style={styles.rejectBtnText}>Reject</Text>
-                                        </TouchableOpacity>
-                                    </View>
+                                    <>
+                                        <View style={styles.cardDivider} />
+                                        <View style={styles.actions}>
+                                            <TouchableOpacity
+                                                style={[styles.approveBtn, isBusy && styles.btnDisabled]}
+                                                onPress={() => handleApprove(r)}
+                                                disabled={!!actionBusy}
+                                                activeOpacity={0.85}
+                                            >
+                                                {isBusy
+                                                    ? <ActivityIndicator color="#fff" size="small" />
+                                                    : <><Ionicons name="checkmark" size={16} color="#fff" /><Text style={styles.approveBtnText}>Approve</Text></>
+                                                }
+                                            </TouchableOpacity>
+                                            <TouchableOpacity
+                                                style={[styles.rejectBtn, isBusy && styles.btnDisabled]}
+                                                onPress={() => openRejectModal(r)}
+                                                disabled={!!actionBusy}
+                                                activeOpacity={0.85}
+                                            >
+                                                <Ionicons name="close" size={16} color="#fff" />
+                                                <Text style={styles.rejectBtnText}>Reject</Text>
+                                            </TouchableOpacity>
+                                        </View>
+                                    </>
                                 )}
                             </View>
                         );
@@ -287,44 +286,33 @@ function makeStyles(colors) {
             flexDirection: 'row',
             alignItems: 'center',
             paddingTop: 56,
-            paddingBottom: 12,
+            paddingBottom: 8,
             paddingHorizontal: 16,
-            borderBottomWidth: 1,
-            borderBottomColor: colors.border,
             backgroundColor: colors.background,
-            gap: 10,
+            gap: 12,
         },
-        backBtn:     { padding: 2 },
-        title:       { flex: 1, fontSize: 20, fontFamily: F.bold, color: colors.text },
-        headerBadge: {
-            backgroundColor: '#F59E0B',
-            minWidth: 22, height: 22, borderRadius: 11,
-            alignItems: 'center', justifyContent: 'center',
-            paddingHorizontal: 6,
-        },
-        headerBadgeText: { fontSize: 11, fontFamily: F.bold, color: '#fff' },
-
+        backBtn:   { padding: 2 },
+        title:     { flex: 1, fontSize: 22, fontFamily: F.bold, color: colors.text },
         // Pills
         pillsScroll: { flexGrow: 0 },
-        pillsRow:    { paddingHorizontal: 12, paddingVertical: 10, gap: 8 },
+        pillsRow:    { paddingHorizontal: 16, paddingVertical: 8, gap: 8 },
         pill: {
+            flexDirection: 'row', alignItems: 'center', gap: 6,
             height: 34, paddingHorizontal: 14, borderRadius: 20,
             borderWidth: 1, borderColor: colors.border,
-            alignItems: 'center', justifyContent: 'center',
+            backgroundColor: colors.background,
         },
         pillActive:     { backgroundColor: colors.primary, borderColor: colors.primary },
-        pillText:       { fontSize: 12, fontFamily: F.medium, color: colors.textSecondary },
+        pillText:       { fontSize: 13, fontFamily: F.medium, color: colors.textSecondary },
         pillTextActive: { color: '#fff', fontFamily: F.semibold },
 
         // Count
-        countLabel: {
-            fontSize: 11, fontFamily: F.semibold, color: colors.textTertiary,
-            letterSpacing: 0.5, paddingHorizontal: 16, paddingBottom: 6,
-        },
+        countWrap:  { paddingHorizontal: 16, paddingTop: 2, paddingBottom: 10 },
+        countLabel: { fontSize: 15, fontFamily: F.bold, color: colors.text },
 
         // List
         list:        { flex: 1 },
-        listContent: { paddingHorizontal: 12, paddingBottom: 90 },
+        listContent: { paddingHorizontal: 16, paddingBottom: 90 },
         center:      { paddingTop: 60, alignItems: 'center' },
         empty: {
             height: 180, alignItems: 'center', justifyContent: 'center',
@@ -333,41 +321,55 @@ function makeStyles(colors) {
         },
         emptyText: { fontSize: 13, fontFamily: F.regular, color: colors.textSecondary },
 
-        // Card (compact)
+        // Card (matches User Management cards)
         card: {
-            backgroundColor: colors.backgroundSecondary,
-            borderWidth: 1, borderColor: colors.border, borderRadius: 10,
-            paddingVertical: 8, paddingHorizontal: 10, marginBottom: 6,
+            backgroundColor: colors.background,
+            borderWidth: 1, borderColor: colors.border, borderRadius: 14,
+            padding: 12, marginBottom: 8,
+        },
+        cardPending: {
+            backgroundColor: colors.primaryLight,
+            borderColor: colors.primary,
+            borderLeftWidth: 4,
         },
         cardTop:  { flexDirection: 'row', alignItems: 'center' },
         avatar: {
-            width: 34, height: 34, borderRadius: 17,
+            width: 44, height: 44, borderRadius: 22,
             backgroundColor: colors.backgroundSecondary,
             alignItems: 'center', justifyContent: 'center',
-            marginRight: 10, borderWidth: 1, borderColor: colors.border,
+            marginRight: 12, borderWidth: 1, borderColor: colors.border,
         },
         info:      { flex: 1, minWidth: 0 },
-        nameRow:   { flexDirection: 'row', alignItems: 'center', gap: 6 },
-        name:      { flex: 1, fontSize: 13, fontFamily: F.bold, color: colors.text },
-        badge:     { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5 },
-        badgeText: { fontSize: 9,  fontFamily: F.bold, color: '#fff', letterSpacing: 0.3 },
-        metaLine:  { fontSize: 11, fontFamily: F.regular, color: colors.textSecondary, marginTop: 2 },
+        name:      { fontSize: 14, fontFamily: F.bold, color: colors.text },
+        metaLine:  { fontSize: 12, fontFamily: F.regular, color: colors.textSecondary, marginTop: 1 },
         metaDot:   { color: colors.textTertiary },
-        reviewed:  { fontSize: 10, fontFamily: F.regular, color: colors.textTertiary, marginTop: 1 },
 
-        // Action buttons (compact)
-        actions: { flexDirection: 'row', gap: 6, marginTop: 8 },
+        // Status icon badges (icon only)
+        pendingPill: {
+            width: 32, height: 32, borderRadius: 16,
+            borderWidth: 1, borderColor: '#F59E0B',
+            alignItems: 'center', justifyContent: 'center',
+        },
+        approvedPill: {
+            width: 32, height: 32, borderRadius: 16,
+            backgroundColor: colors.successLight,
+            alignItems: 'center', justifyContent: 'center',
+        },
+
+        // Action buttons (pending only)
+        cardDivider: { height: 1, backgroundColor: colors.primary, opacity: 0.25, marginVertical: 12 },
+        actions: { flexDirection: 'row', gap: 10 },
         approveBtn: {
-            flex: 1, height: 30, backgroundColor: '#10B981', borderRadius: 7,
-            flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 3,
+            flex: 1, height: 46, backgroundColor: '#10B981', borderRadius: 12,
+            flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
         },
         rejectBtn: {
-            flex: 1, height: 30, backgroundColor: '#EF4444', borderRadius: 7,
-            flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 3,
+            flex: 1, height: 46, backgroundColor: '#EF4444', borderRadius: 12,
+            flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
         },
         btnDisabled:    { opacity: 0.5 },
-        approveBtnText: { fontSize: 11, fontFamily: F.semibold, color: '#fff' },
-        rejectBtnText:  { fontSize: 11, fontFamily: F.semibold, color: '#fff' },
+        approveBtnText: { fontSize: 14, fontFamily: F.semibold, color: '#fff' },
+        rejectBtnText:  { fontSize: 14, fontFamily: F.semibold, color: '#fff' },
 
         // Reject modal
         modalOverlay: {

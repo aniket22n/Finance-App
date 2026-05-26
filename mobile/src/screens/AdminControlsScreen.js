@@ -17,23 +17,38 @@ import { F } from '../theme';
 import { useInputFocus, focusBorder, webOutlineReset } from '../hooks/useInputFocus';
 import Toast, { useToast } from '../components/Toast';
 
-// ── Small reusable card ──
-function ActionCard({ icon, iconBg, iconColor, title, subtitle, onPress, colors }) {
+// ── A single action row inside a grouped SectionCard ──
+function ActionRow({ icon, iconBg, iconColor, title, subtitle, onPress, badge, isLast, colors }) {
     const styles = useMemo(() => makeStyles(colors), [colors]);
     return (
-        <TouchableOpacity style={styles.actionCard} onPress={onPress} activeOpacity={0.75}>
-            <View style={styles.actionCardLeft}>
-                <View style={[styles.actionIcon, { backgroundColor: iconBg }]}>
-                    <Ionicons name={icon} size={24} color={iconColor} />
-                </View>
-                <View style={styles.actionCardInfo}>
-                    <Text style={styles.actionCardTitle}>{title}</Text>
-                    <Text style={styles.actionCardSub}>{subtitle}</Text>
-                </View>
+        <TouchableOpacity
+            style={[styles.row, !isLast && styles.rowDivider]}
+            onPress={onPress}
+            activeOpacity={0.7}
+        >
+            <View style={[styles.rowIcon, { backgroundColor: iconBg }]}>
+                <Ionicons name={icon} size={20} color={iconColor} />
             </View>
-            <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
+            <View style={styles.rowInfo}>
+                <Text style={styles.rowTitle}>{title}</Text>
+                <Text style={styles.rowSub}>{subtitle}</Text>
+            </View>
+            {badge ? (
+                <View style={styles.rowBadge}>
+                    <Text style={styles.rowBadgeTxt}>{badge}</Text>
+                </View>
+            ) : null}
+            <View style={[styles.rowChev, { backgroundColor: iconBg }]}>
+                <Ionicons name="chevron-forward" size={14} color={iconColor} />
+            </View>
         </TouchableOpacity>
     );
+}
+
+// ── Grouped card wrapping one or more ActionRows ──
+function SectionCard({ children, colors }) {
+    const styles = useMemo(() => makeStyles(colors), [colors]);
+    return <View style={styles.groupCard}>{children}</View>;
 }
 
 // ── Modal shell ──
@@ -96,13 +111,15 @@ export default function AdminControlsScreen({ navigation }) {
     const [showUsers, setShowUsers] = useState(false);
     const [users, setUsers] = useState([]);
     const [userSearch, setUserSearch] = useState('');
+    const [userSort, setUserSort] = useState('name');     // 'name' | 'recent'
     const [titleFocused, titleFocusProps] = useInputFocus();
     const [bodyFocused, bodyFocusProps] = useInputFocus();
     const [userSearchFocused, userSearchFocusProps] = useInputFocus();
     const [loadingUsers, setLoadingUsers] = useState(false);
 
-    // ── OTP-gated delete (only when target user belongs to one or more groups) ──
-    const [deleteTarget, setDeleteTarget]       = useState(null);   // { user, requiresOtp }
+    // ── OTP-gated delete (always required) — admin clicks "Get OTP", then enters it ──
+    const [deleteTarget, setDeleteTarget]       = useState(null);   // { user }
+    const [delOtpSent, setDelOtpSent]           = useState(false);  // false → show "Get OTP"; true → show OTP field
     const [delOtpCode, setDelOtpCode]           = useState('');
     const [delOtpError, setDelOtpError]         = useState('');
     const [sendingDelOtp, setSendingDelOtp]     = useState(false);
@@ -281,26 +298,26 @@ export default function AdminControlsScreen({ navigation }) {
             show('You cannot delete your own account', 'warning');
             return;
         }
-        const inGroups = (u.groups || []).length > 0;
-        if (!inGroups) {
-            // No group ties — simple confirm is enough.
-            Alert.alert('Delete User', `Remove ${u.name || u.phone} permanently?`, [
-                { text: 'Cancel', style: 'cancel' },
-                { text: 'Delete', style: 'destructive', onPress: () => performDelete(u._id) },
-            ]);
-            return;
-        }
-        // User belongs to one or more groups — gate behind OTP.
+        // Open the confirm modal in the pre-OTP state — admin must request an OTP first.
         setDelOtpCode('');
         setDelOtpError('');
+        setDelOtpSent(false);
+        setDeleteTarget({ user: u });
+    };
+
+    // Step 1: admin taps "Get OTP" — reveal the OTP entry field immediately, then send
+    // the code in the background (so a send error/rate-limit doesn't hide the field).
+    const sendDeleteOtp = async () => {
+        setDelOtpError('');
+        setDelOtpSent(true);
         setSendingDelOtp(true);
-        setDeleteTarget({ user: u, requiresOtp: true });
-        sendOtp(currentUser?.phone)
-            .catch(err => {
-                show(extractErr(err, 'Failed to send OTP'), 'error');
-                setDeleteTarget(null);
-            })
-            .finally(() => setSendingDelOtp(false));
+        try {
+            await sendOtp(currentUser?.phone);
+        } catch (err) {
+            show(extractErr(err, 'Failed to send OTP'), 'error');
+        } finally {
+            setSendingDelOtp(false);
+        }
     };
 
     const handleConfirmDeleteUser = async () => {
@@ -330,15 +347,21 @@ export default function AdminControlsScreen({ navigation }) {
 
     const cancelDeleteOtp = () => {
         setDeleteTarget(null);
+        setDelOtpSent(false);
         setDelOtpCode('');
         setDelOtpError('');
     };
 
-    const filteredUsers = users.filter(u =>
-        !userSearch ||
-        u.name?.toLowerCase().includes(userSearch.toLowerCase()) ||
-        u.phone?.includes(userSearch)
-    );
+    const visibleUsers = useMemo(() => {
+        const list = users.filter(u =>
+            !userSearch ||
+            u.name?.toLowerCase().includes(userSearch.toLowerCase()) ||
+            u.phone?.includes(userSearch)
+        );
+        return [...list].sort((a, b) => userSort === 'name'
+            ? (a.name || a.phone || '').localeCompare(b.name || b.phone || '')
+            : new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+    }, [users, userSearch, userSort]);
 
     const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -352,69 +375,82 @@ export default function AdminControlsScreen({ navigation }) {
 
                 {/* MONTHLY DRAW */}
                 <Text style={styles.sectionTitle}>MONTHLY DRAW</Text>
-                <ActionCard
-                    icon="add-circle-outline"
-                    iconBg={colors.primaryLight}
-                    iconColor={colors.primary}
-                    title="Run This Month's Draw"
-                    subtitle="Execute the cycle for the next month (uses your POT Plan)"
-                    onPress={openCycle}
-                    colors={colors}
-                />
+                <SectionCard colors={colors}>
+                    <ActionRow
+                        icon="calendar-outline"
+                        iconBg={colors.primaryLight}
+                        iconColor={colors.primary}
+                        title="Run This Month's Draw"
+                        subtitle="Execute the cycle for the next month (uses your POT Plan)"
+                        onPress={openCycle}
+                        isLast
+                        colors={colors}
+                    />
+                </SectionCard>
 
                 {/* NOTIFICATIONS */}
                 <Text style={styles.sectionTitle}>NOTIFICATIONS</Text>
-                <ActionCard
-                    icon="notifications-outline"
-                    iconBg={colors.warningLight}
-                    iconColor={colors.warning}
-                    title="Bulk Notify Members"
-                    subtitle="Send a push message to all or a group"
-                    onPress={openNotify}
-                    colors={colors}
-                />
-                <ActionCard
-                    icon="alarm-outline"
-                    iconBg={colors.primaryLight}
-                    iconColor={colors.primary}
-                    title="Trigger EMI Reminders"
-                    subtitle="Manually run the reminder scheduler"
-                    onPress={handleTriggerReminders}
-                    colors={colors}
-                />
+                <SectionCard colors={colors}>
+                    <ActionRow
+                        icon="notifications-outline"
+                        iconBg={colors.warningLight}
+                        iconColor={colors.warning}
+                        title="Bulk Notify Members"
+                        subtitle="Send a push message to all members or a specific group"
+                        onPress={openNotify}
+                        colors={colors}
+                    />
+                    <ActionRow
+                        icon="alarm-outline"
+                        iconBg={colors.primaryLight}
+                        iconColor={colors.primary}
+                        title="Trigger EMI Reminders"
+                        subtitle="Manually run the reminder scheduler"
+                        onPress={handleTriggerReminders}
+                        isLast
+                        colors={colors}
+                    />
+                </SectionCard>
 
                 {/* USER MANAGEMENT */}
                 <Text style={styles.sectionTitle}>USER MANAGEMENT</Text>
-                <ActionCard
-                    icon="document-text-outline"
-                    iconBg={colors.warningLight}
-                    iconColor={colors.warning}
-                    title={`Account Requests${pendingCount > 0 ? ` (${pendingCount} pending)` : ''}`}
-                    subtitle="Review and approve new member sign-up requests"
-                    onPress={() => navigation.navigate('AdminAccountRequests')}
-                    colors={colors}
-                />
-                <ActionCard
-                    icon="people-outline"
-                    iconBg={colors.successLight}
-                    iconColor={colors.success}
-                    title="Manage Users"
-                    subtitle="View memberships and remove inactive users"
-                    onPress={openUsers}
-                    colors={colors}
-                />
+                <SectionCard colors={colors}>
+                    <ActionRow
+                        icon="document-text-outline"
+                        iconBg={colors.warningLight}
+                        iconColor={colors.warning}
+                        title="Account Requests"
+                        subtitle="Review and approve new member sign-up requests"
+                        badge={pendingCount > 0 ? String(pendingCount) : null}
+                        onPress={() => navigation.navigate('AdminAccountRequests')}
+                        colors={colors}
+                    />
+                    <ActionRow
+                        icon="people-outline"
+                        iconBg={colors.successLight}
+                        iconColor={colors.success}
+                        title="Manage Users"
+                        subtitle="View and remove members"
+                        onPress={openUsers}
+                        isLast
+                        colors={colors}
+                    />
+                </SectionCard>
 
                 {/* APP SETTINGS */}
                 <Text style={styles.sectionTitle}>APP SETTINGS</Text>
-                <ActionCard
-                    icon="archive-outline"
-                    iconBg={colors.infoLight}
-                    iconColor={colors.info}
-                    title="Backup & Export"
-                    subtitle="Export all data as JSON (coming soon)"
-                    onPress={() => show('Coming soon — backup will be available in a future update.', 'info')}
-                    colors={colors}
-                />
+                <SectionCard colors={colors}>
+                    <ActionRow
+                        icon="archive-outline"
+                        iconBg={colors.infoLight}
+                        iconColor={colors.info}
+                        title="Backup & Export"
+                        subtitle="Export all data as JSON (coming soon)"
+                        onPress={() => show('Coming soon — backup will be available in a future update.', 'info')}
+                        isLast
+                        colors={colors}
+                    />
+                </SectionCard>
             </ScrollView>
 
             {/* Create Cycle Modal */}
@@ -631,81 +667,129 @@ export default function AdminControlsScreen({ navigation }) {
                 </TouchableOpacity>
             </Sheet>
 
-            {/* User Management Modal */}
-            <Sheet visible={showUsers} title="User Management" onClose={() => setShowUsers(false)} colors={colors}>
-                <View style={[styles.searchWrap, focusBorder(colors, userSearchFocused)]}>
-                    <Ionicons name="search" size={14} color={colors.textSecondary} style={{ marginRight: 6 }} />
-                    <TextInput
-                        style={[styles.searchInput, webOutlineReset]}
-                        value={userSearch}
-                        onChangeText={setUserSearch}
-                        placeholder="Search name or phone…"
-                        placeholderTextColor={colors.textSecondary}
-                        {...userSearchFocusProps}
-                    />
-                </View>
-                <ScrollView style={styles.userList} showsVerticalScrollIndicator={false}>
-                    {loadingUsers ? (
-                        <ActivityIndicator color={colors.primary} style={{ marginTop: 24 }} />
-                    ) : filteredUsers.length === 0 ? (
-                        <View style={styles.userEmptyBox}>
-                            <Ionicons name="people-outline" size={36} color={colors.textSecondary} />
-                            <Text style={styles.userEmptyTxt}>{userSearch ? 'No matching users' : 'No users yet'}</Text>
+            {/* User Management Modal — full sheet */}
+            <Modal visible={showUsers} animationType="slide" onRequestClose={() => setShowUsers(false)} statusBarTranslucent>
+                <View style={styles.umOverlay}>
+                    <View style={styles.umSheet}>
+                        {/* Header */}
+                        <View style={styles.umHeader}>
+                            <View style={styles.umHeaderIcon}>
+                                <Ionicons name="people" size={20} color={colors.primary} />
+                            </View>
+                            <View style={{ flex: 1 }}>
+                                <Text style={styles.umTitle}>User Management</Text>
+                            </View>
+                            <TouchableOpacity
+                                style={styles.umClose}
+                                onPress={() => setShowUsers(false)}
+                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            >
+                                <Ionicons name="close" size={18} color={colors.textSecondary} />
+                            </TouchableOpacity>
                         </View>
-                    ) : (
-                        filteredUsers.map(u => {
-                            const grps    = u.groups || [];
-                            const isAdmin = u.role === 'admin';
-                            return (
-                                <View key={u._id} style={[styles.userCard, isAdmin && styles.userCardAdmin]}>
-                                    <View style={styles.userCardTop}>
-                                        <View style={[styles.userCardAvatar, isAdmin && styles.userCardAvatarAdmin]}>
-                                            <Ionicons name="person" size={15} color={isAdmin ? '#fff' : colors.textSecondary} />
-                                        </View>
-                                        <View style={styles.userCardMid}>
-                                            <Text style={styles.userCardName} numberOfLines={1}>
-                                                {u.name || '(no name)'}
-                                            </Text>
-                                            <Text style={styles.userCardPhone}>+91 {u.phone}</Text>
-                                        </View>
-                                        <View style={styles.userCardRight}>
-                                            {/* Groups chip — tap to see the list. Only shown when user is in at least one group. */}
-                                            {grps.length > 0 ? (
-                                                <TouchableOpacity
-                                                    style={styles.userGroupsBtn}
-                                                    onPress={() => setGroupsPeek({ user: u })}
-                                                    activeOpacity={0.7}
-                                                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                                                >
-                                                    <Ionicons name="people" size={11} color={colors.primary} style={{ marginRight: 4 }} />
-                                                    <Text style={styles.userGroupsBtnTxt}>
-                                                        Groups · {grps.length}
-                                                    </Text>
-                                                </TouchableOpacity>
-                                            ) : null}
-                                            {/* Admin → protected lock; member → delete trash. Member role tag dropped per request. */}
-                                            {isAdmin ? (
-                                                <View style={styles.userLockBtn}>
-                                                    <Ionicons name="lock-closed" size={12} color={colors.textSecondary} />
-                                                </View>
-                                            ) : (
-                                                <TouchableOpacity
-                                                    style={styles.userDelBtn}
-                                                    onPress={() => handleDeleteUser(u)}
-                                                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                                                >
-                                                    <Ionicons name="trash-outline" size={14} color={colors.error} />
-                                                </TouchableOpacity>
-                                            )}
-                                        </View>
-                                    </View>
+
+                        {/* Search */}
+                        <View style={styles.umSearchRow}>
+                            <View style={[styles.umSearch, focusBorder(colors, userSearchFocused)]}>
+                                <Ionicons name="search" size={16} color={colors.textSecondary} style={{ marginRight: 8 }} />
+                                <TextInput
+                                    style={[styles.umSearchInput, webOutlineReset]}
+                                    value={userSearch}
+                                    onChangeText={setUserSearch}
+                                    placeholder="Search by name or phone number…"
+                                    placeholderTextColor={colors.textSecondary}
+                                    {...userSearchFocusProps}
+                                />
+                            </View>
+                        </View>
+
+                        {/* Count + sort */}
+                        <View style={styles.umCountRow}>
+                            <Text style={styles.umCount}>
+                                {visibleUsers.length} {visibleUsers.length === 1 ? 'Member' : 'Members'}
+                            </Text>
+                            <TouchableOpacity
+                                style={styles.umSortBtn}
+                                onPress={() => setUserSort(s => (s === 'name' ? 'recent' : 'name'))}
+                                activeOpacity={0.7}
+                            >
+                                <Text style={styles.umSortTxt}>Sorted by {userSort === 'name' ? 'Name' : 'Recent'}</Text>
+                                <Ionicons name="swap-vertical" size={15} color={colors.textSecondary} />
+                            </TouchableOpacity>
+                        </View>
+
+                        {/* List */}
+                        <ScrollView style={styles.umList} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 8 }}>
+                            {loadingUsers ? (
+                                <ActivityIndicator color={colors.primary} style={{ marginTop: 24 }} />
+                            ) : visibleUsers.length === 0 ? (
+                                <View style={styles.userEmptyBox}>
+                                    <Ionicons name="people-outline" size={36} color={colors.textSecondary} />
+                                    <Text style={styles.userEmptyTxt}>{userSearch ? 'No matching users' : 'No users yet'}</Text>
                                 </View>
-                            );
-                        })
-                    )}
-                    <View style={{ height: 20 }} />
-                </ScrollView>
-            </Sheet>
+                            ) : (
+                                visibleUsers.map(u => {
+                                    const grps    = u.groups || [];
+                                    const isAdmin = u.role === 'admin';
+                                    return (
+                                        <View key={u._id} style={[styles.umCard, isAdmin && styles.umCardAdmin]}>
+                                            <View style={[styles.umAvatar, isAdmin && styles.umAvatarAdmin]}>
+                                                <Ionicons name="person" size={18} color={isAdmin ? '#fff' : colors.textSecondary} />
+                                                {isAdmin ? (
+                                                    <View style={styles.umCrown}>
+                                                        <Ionicons name="shield-checkmark" size={9} color="#fff" />
+                                                    </View>
+                                                ) : null}
+                                            </View>
+                                            <View style={styles.umCardMid}>
+                                                <Text style={styles.umName} numberOfLines={1}>{u.name || '(no name)'}</Text>
+                                                <Text style={styles.umPhone}>+91 {u.phone}</Text>
+                                                {isAdmin ? (
+                                                    <View style={styles.umTagRow}>
+                                                        <View style={styles.umAdminTag}>
+                                                            <Text style={styles.umAdminTagTxt}>ADMIN</Text>
+                                                        </View>
+                                                        <View style={styles.umProtTag}>
+                                                            <Ionicons name="lock-closed" size={9} color={colors.success} />
+                                                            <Text style={styles.umProtTagTxt}>Protected</Text>
+                                                        </View>
+                                                    </View>
+                                                ) : null}
+                                            </View>
+                                            <View style={styles.umCardRight}>
+                                                {grps.length > 0 && !isAdmin ? (
+                                                    <TouchableOpacity
+                                                        style={styles.umGroupPill}
+                                                        onPress={() => setGroupsPeek({ user: u })}
+                                                        activeOpacity={0.7}
+                                                        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                                                    >
+                                                        <Ionicons name="people" size={18} color={colors.primary} style={{ marginRight: 4 }} />
+                                                        <Text style={styles.umGroupPillTxt}>{grps.length}</Text>
+                                                    </TouchableOpacity>
+                                                ) : null}
+                                                {isAdmin ? (
+                                                    <View style={styles.umLockBtn}>
+                                                        <Ionicons name="lock-closed" size={14} color={colors.primary} />
+                                                    </View>
+                                                ) : (
+                                                    <TouchableOpacity
+                                                        style={styles.umDelBtn}
+                                                        onPress={() => handleDeleteUser(u)}
+                                                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                                    >
+                                                        <Ionicons name="trash-outline" size={20} color={colors.error} />
+                                                    </TouchableOpacity>
+                                                )}
+                                            </View>
+                                        </View>
+                                    );
+                                })
+                            )}
+                        </ScrollView>
+                    </View>
+                </View>
+            </Modal>
 
             {/* Groups peek — small popover listing the groups a user belongs to */}
             <Modal visible={!!groupsPeek} transparent animationType="fade" onRequestClose={() => setGroupsPeek(null)}>
@@ -741,72 +825,100 @@ export default function AdminControlsScreen({ navigation }) {
                 </TouchableOpacity>
             </Modal>
 
-            {/* OTP-gated Delete User modal (only when user belongs to one or more groups) */}
+            {/* OTP-gated Delete User modal — admin requests an OTP, then enters it */}
             <Modal visible={!!deleteTarget} transparent animationType="fade" onRequestClose={cancelDeleteOtp}>
                 <View style={styles.delOtpOverlay}>
-                    {deleteTarget ? (
+                    {deleteTarget ? (() => {
+                        const grps = deleteTarget.user.groups || [];
+                        return (
                         <View style={styles.delOtpBox}>
                             <View style={styles.delOtpIconWrap}>
                                 <Ionicons name="shield-checkmark-outline" size={30} color={colors.error} />
                             </View>
-                            <Text style={styles.delOtpTitle}>Confirm Delete</Text>
+                            <Text style={styles.delOtpTitle}>Delete Member</Text>
                             <Text style={styles.delOtpSub}>
-                                <Text style={styles.delOtpEmph}>{deleteTarget.user.name || deleteTarget.user.phone}</Text>
-                                {'  '}is a member of{'  '}
-                                <Text style={styles.delOtpEmph}>{(deleteTarget.user.groups || []).length} group{(deleteTarget.user.groups || []).length === 1 ? '' : 's'}</Text>.
-                                {'\n'}Deleting will also remove them from those groups.
+                                {grps.length > 0 ? (
+                                    <>
+                                        <Text style={styles.delOtpEmph}>{deleteTarget.user.name || deleteTarget.user.phone}</Text>
+                                        {'  '}is a member of{'  '}
+                                        <Text style={styles.delOtpEmph}>{grps.length} group{grps.length === 1 ? '' : 's'}</Text>.
+                                        {'\n'}Deleting will also remove them from those groups.
+                                    </>
+                                ) : (
+                                    <>
+                                        Remove <Text style={styles.delOtpEmph}>{deleteTarget.user.name || deleteTarget.user.phone}</Text> permanently?
+                                    </>
+                                )}
                             </Text>
 
-                            <View style={styles.delGroupsBox}>
-                                {(deleteTarget.user.groups || []).slice(0, 4).map(g => (
-                                    <Text key={g._id} style={styles.delGroupsItem}>• {g.name}</Text>
-                                ))}
-                                {(deleteTarget.user.groups || []).length > 4 ? (
-                                    <Text style={styles.delGroupsMore}>… and {deleteTarget.user.groups.length - 4} more</Text>
-                                ) : null}
-                            </View>
-
-                            <Text style={styles.delOtpHint}>
-                                {sendingDelOtp
-                                    ? 'Sending OTP…'
-                                    : `OTP sent to +91 ${currentUser?.phone || '—'}`}
-                            </Text>
-
-                            <TextInput
-                                style={[styles.delOtpInput, webOutlineReset, focusBorder(colors, delOtpFocused), delOtpError && styles.delOtpInputError]}
-                                value={delOtpCode}
-                                onChangeText={v => { setDelOtpCode(v); setDelOtpError(''); }}
-                                placeholder="Enter OTP"
-                                placeholderTextColor={colors.textSecondary}
-                                keyboardType="number-pad"
-                                maxLength={6}
-                                {...delOtpFocusProps}
-                                autoFocus
-                                textAlign="center"
-                                editable={!sendingDelOtp}
-                            />
-                            {delOtpError ? (
-                                <View style={styles.delOtpErrorRow}>
-                                    <Ionicons name="alert-circle" size={13} color={colors.error} />
-                                    <Text style={styles.delOtpErrorTxt}>{delOtpError}</Text>
+                            {grps.length > 0 ? (
+                                <View style={styles.delGroupsBox}>
+                                    {grps.slice(0, 4).map(g => (
+                                        <Text key={g._id} style={styles.delGroupsItem}>• {g.name}</Text>
+                                    ))}
+                                    {grps.length > 4 ? (
+                                        <Text style={styles.delGroupsMore}>… and {grps.length - 4} more</Text>
+                                    ) : null}
                                 </View>
                             ) : null}
 
-                            <TouchableOpacity
-                                style={[styles.delOtpConfirmBtn, (verifyingDelete || sendingDelOtp) && { opacity: 0.6 }]}
-                                onPress={handleConfirmDeleteUser}
-                                disabled={verifyingDelete || sendingDelOtp}
-                                activeOpacity={0.85}
-                            >
-                                {verifyingDelete
-                                    ? <ActivityIndicator color="#fff" />
-                                    : <Text style={styles.delOtpConfirmTxt}>Confirm Delete</Text>}
-                            </TouchableOpacity>
+                            {!delOtpSent ? (
+                                // ── Step 1: request OTP ──
+                                <>
+                                    <Text style={styles.delOtpHint}>
+                                        An OTP will be sent to +91 {currentUser?.phone || '—'} to confirm.
+                                    </Text>
+                                    <TouchableOpacity
+                                        style={[styles.delOtpConfirmBtn, sendingDelOtp && { opacity: 0.6 }]}
+                                        onPress={sendDeleteOtp}
+                                        disabled={sendingDelOtp}
+                                        activeOpacity={0.85}
+                                    >
+                                        {sendingDelOtp
+                                            ? <ActivityIndicator color="#fff" />
+                                            : <Text style={styles.delOtpConfirmTxt}>Get OTP</Text>}
+                                    </TouchableOpacity>
+                                </>
+                            ) : (
+                                // ── Step 2: enter OTP ──
+                                <>
+                                    <Text style={styles.delOtpHint}>OTP sent to +91 {currentUser?.phone || '—'}</Text>
+                                    <TextInput
+                                        style={[styles.delOtpInput, webOutlineReset, focusBorder(colors, delOtpFocused), delOtpError && styles.delOtpInputError]}
+                                        value={delOtpCode}
+                                        onChangeText={v => { setDelOtpCode(v); setDelOtpError(''); }}
+                                        placeholder="Enter OTP"
+                                        placeholderTextColor={colors.textSecondary}
+                                        keyboardType="number-pad"
+                                        maxLength={6}
+                                        {...delOtpFocusProps}
+                                        autoFocus
+                                        textAlign="center"
+                                    />
+                                    {delOtpError ? (
+                                        <View style={styles.delOtpErrorRow}>
+                                            <Ionicons name="alert-circle" size={13} color={colors.error} />
+                                            <Text style={styles.delOtpErrorTxt}>{delOtpError}</Text>
+                                        </View>
+                                    ) : null}
+                                    <TouchableOpacity
+                                        style={[styles.delOtpConfirmBtn, verifyingDelete && { opacity: 0.6 }]}
+                                        onPress={handleConfirmDeleteUser}
+                                        disabled={verifyingDelete}
+                                        activeOpacity={0.85}
+                                    >
+                                        {verifyingDelete
+                                            ? <ActivityIndicator color="#fff" />
+                                            : <Text style={styles.delOtpConfirmTxt}>Confirm Delete</Text>}
+                                    </TouchableOpacity>
+                                </>
+                            )}
                             <TouchableOpacity style={styles.delOtpCancelBtn} onPress={cancelDeleteOtp} disabled={verifyingDelete}>
                                 <Text style={styles.delOtpCancelTxt}>Cancel</Text>
                             </TouchableOpacity>
                         </View>
-                    ) : null}
+                        );
+                    })() : null}
                 </View>
             </Modal>
 
@@ -819,15 +931,11 @@ function makeStyles(colors) {
     return StyleSheet.create({
         root: { flex: 1, backgroundColor: colors.backgroundSecondary },
         header: {
-            backgroundColor: colors.background,
             paddingHorizontal: 16,
             paddingTop: 56,
-            paddingBottom: 12,
-            borderBottomWidth: 1,
-            borderBottomColor: colors.border,
-            zIndex: 10,
+            paddingBottom: 10,
         },
-        title:        { fontSize: 20, fontFamily: F.bold, color: colors.text },
+        title:        { fontSize: 26, fontFamily: F.bold, color: colors.text },
         content:      { flex: 1, paddingHorizontal: 16 },
         sectionTitle: {
             fontSize: 12,
@@ -837,27 +945,43 @@ function makeStyles(colors) {
             marginTop: 24,
             marginBottom: 10,
         },
-        actionCard: {
+
+        // ── Grouped section card + rows ──
+        groupCard: {
             backgroundColor: colors.background,
             borderWidth: 1,
             borderColor: colors.border,
-            borderRadius: 12,
+            borderRadius: 16,
+            overflow: 'hidden',
             shadowColor: '#000',
             shadowOffset: { width: 0, height: 2 },
-            shadowOpacity: 0.08,
+            shadowOpacity: 0.06,
             shadowRadius: 8,
-            elevation: 3,
+            elevation: 2,
+        },
+        row: {
             flexDirection: 'row',
             alignItems: 'center',
-            justifyContent: 'space-between',
-            marginBottom: 10,
-            padding: 14,
+            paddingVertical: 10,
+            paddingHorizontal: 12,
+            gap: 12,
         },
-        actionCardLeft:  { flexDirection: 'row', alignItems: 'center', flex: 1 },
-        actionIcon:      { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-        actionCardInfo:  { marginLeft: 14, flex: 1 },
-        actionCardTitle: { fontSize: 14, fontFamily: F.semibold, color: colors.text },
-        actionCardSub:   { fontSize: 12, fontFamily: F.regular, color: colors.textSecondary, marginTop: 2 },
+        rowDivider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+        rowIcon:    { width: 40, height: 40, borderRadius: 11, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+        rowInfo:    { flex: 1, minWidth: 0 },
+        rowTitle:   { fontSize: 14, fontFamily: F.semibold, color: colors.text },
+        rowSub:     { fontSize: 12, fontFamily: F.regular, color: colors.textSecondary, marginTop: 1, lineHeight: 16 },
+        rowBadge: {
+            minWidth: 20, height: 20, borderRadius: 10,
+            backgroundColor: colors.warningLight,
+            alignItems: 'center', justifyContent: 'center',
+            paddingHorizontal: 6,
+        },
+        rowBadgeTxt: { fontSize: 12, fontFamily: F.bold, color: colors.warning },
+        rowChev: {
+            width: 28, height: 28, borderRadius: 8,
+            alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+        },
         overlay:         { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
         sheet: {
             backgroundColor: colors.background,
@@ -976,61 +1100,96 @@ function makeStyles(colors) {
         },
         groupChipActive: { borderColor: colors.primary, backgroundColor: colors.primaryLight },
         groupChipText:   { fontSize: 12, fontFamily: F.medium, color: colors.textSecondary },
-        searchWrap: {
-            flexDirection: 'row',
-            alignItems: 'center',
+        // ── User Management modal (full screen) ──
+        umOverlay: { flex: 1, backgroundColor: colors.backgroundSecondary },
+        umSheet: {
+            flex: 1,
             backgroundColor: colors.backgroundSecondary,
-            borderRadius: 10,
-            paddingHorizontal: 12,
-            height: 44,
-            borderWidth: 1,
-            borderColor: colors.border,
-            marginBottom: 12,
+            paddingHorizontal: 16, paddingBottom: 16, paddingTop: 52,
         },
-        searchInput:   { flex: 1, fontSize: 13, fontFamily: F.regular, color: colors.text },
-        userList:      { maxHeight: 460 },
-        // ── Card-based user row (compact) ──
-        userCard: {
-            backgroundColor: colors.backgroundSecondary,
-            borderRadius: 10, borderWidth: 1, borderColor: colors.border,
-            paddingVertical: 8, paddingHorizontal: 10, marginBottom: 6,
-        },
-        userCardAdmin: {
-            borderColor: colors.primary, borderWidth: 1.5,
+        umHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 },
+        umHeaderIcon: {
+            width: 44, height: 44, borderRadius: 12,
             backgroundColor: colors.primaryLight,
+            alignItems: 'center', justifyContent: 'center',
         },
-        userLockBtn: {
-            width: 28, height: 28, borderRadius: 7,
-            backgroundColor: colors.backgroundTertiary,
+        umTitle: { fontSize: 22, fontFamily: F.bold, color: colors.text },
+        umClose: {
+            width: 30, height: 30, borderRadius: 15,
+            backgroundColor: colors.background,
+            borderWidth: 1, borderColor: colors.border,
+            alignItems: 'center', justifyContent: 'center',
+        },
+
+        // Search
+        umSearchRow: { marginBottom: 16 },
+        umSearch: {
+            flexDirection: 'row', alignItems: 'center',
+            backgroundColor: colors.background,
+            borderRadius: 12, paddingHorizontal: 14, height: 48,
+            borderWidth: 1, borderColor: colors.border,
+        },
+        umSearchInput: { flex: 1, fontSize: 14, fontFamily: F.regular, color: colors.text },
+
+        // Count + sort
+        umCountRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+        umCount:    { fontSize: 14, fontFamily: F.semibold, color: colors.text },
+        umSortBtn:  { flexDirection: 'row', alignItems: 'center', gap: 5 },
+        umSortTxt:  { fontSize: 13, fontFamily: F.medium, color: colors.textSecondary },
+
+        // List + cards
+        umList: { flex: 1 },
+        umCard: {
+            flexDirection: 'row', alignItems: 'center', gap: 12,
+            backgroundColor: colors.background,
+            borderRadius: 14, padding: 12, marginBottom: 8,
+            borderWidth: 1, borderColor: colors.border,
+        },
+        umCardAdmin: { borderColor: colors.primary, backgroundColor: colors.primaryLight },
+        umAvatar: {
+            width: 44, height: 44, borderRadius: 22,
+            backgroundColor: colors.backgroundSecondary,
             alignItems: 'center', justifyContent: 'center',
             borderWidth: 1, borderColor: colors.border,
         },
-        userCardTop:    { flexDirection: 'row', alignItems: 'center' },
-        userCardAvatar: {
-            width: 32, height: 32, borderRadius: 16,
-            backgroundColor: colors.backgroundSecondary,
+        umAvatarAdmin: { backgroundColor: colors.primary, borderColor: colors.primary },
+        umCrown: {
+            position: 'absolute', bottom: -2, right: -2,
+            width: 16, height: 16, borderRadius: 8,
+            backgroundColor: colors.warning,
             alignItems: 'center', justifyContent: 'center',
-            marginRight: 10, borderWidth: 1, borderColor: colors.border,
+            borderWidth: 1.5, borderColor: colors.background,
         },
-        userCardAvatarAdmin: { backgroundColor: colors.textSecondary, borderColor: colors.textSecondary },
-        userCardMid:         { flex: 1 },
-        userCardName:        { fontSize: 13, fontFamily: F.semibold, color: colors.text },
-        userCardPhone:       { fontSize: 11, fontFamily: F.regular, color: colors.textSecondary, marginTop: 1 },
-        userCardRight:       { flexDirection: 'row', alignItems: 'center', gap: 6 },
-        userDelBtn: {
-            width: 28, height: 28, borderRadius: 7,
-            backgroundColor: colors.errorLight,
-            alignItems: 'center', justifyContent: 'center',
-            borderWidth: 1, borderColor: colors.error,
+        umCardMid: { flex: 1, minWidth: 0 },
+        umName:    { fontSize: 14, fontFamily: F.bold, color: colors.text },
+        umPhone:   { fontSize: 12, fontFamily: F.regular, color: colors.textSecondary, marginTop: 1 },
+        umTagRow:  { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
+        umAdminTag: {
+            backgroundColor: colors.primary,
+            paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6,
         },
-        // Groups chip (tap to peek)
-        userGroupsBtn: {
+        umAdminTagTxt: { fontSize: 10, fontFamily: F.bold, color: '#fff', letterSpacing: 0.4 },
+        umProtTag: {
+            flexDirection: 'row', alignItems: 'center', gap: 3,
+            backgroundColor: colors.successLight,
+            paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6,
+        },
+        umProtTagTxt: { fontSize: 10, fontFamily: F.semibold, color: colors.success },
+        umCardRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+        umGroupPill: {
             flexDirection: 'row', alignItems: 'center',
-            backgroundColor: colors.primaryLight,
-            paddingHorizontal: 8, paddingVertical: 4,
-            borderRadius: 10, borderWidth: 1, borderColor: colors.primary,
+            paddingHorizontal: 4, paddingVertical: 6,
         },
-        userGroupsBtnTxt: { fontSize: 10, fontFamily: F.semibold, color: colors.primaryDark },
+        umGroupPillTxt: { fontSize: 14, fontFamily: F.bold, color: colors.primary },
+        umLockBtn: {
+            width: 34, height: 34, borderRadius: 10,
+            backgroundColor: colors.primaryLight,
+            alignItems: 'center', justifyContent: 'center',
+        },
+        umDelBtn: {
+            width: 34, height: 34,
+            alignItems: 'center', justifyContent: 'center',
+        },
 
         userEmptyBox: { alignItems: 'center', paddingVertical: 28 },
         userEmptyTxt: { fontSize: 12, fontFamily: F.regular, color: colors.textSecondary, marginTop: 8 },

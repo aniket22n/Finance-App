@@ -20,7 +20,7 @@ function MenuItem({ icon, label, onPress, danger, colors }) {
         <TouchableOpacity style={styles.menuItem} onPress={onPress} activeOpacity={0.7}>
             <Ionicons name={icon} size={18} color={danger ? colors.error : colors.text} style={{ marginRight: 12 }} />
             <Text style={[styles.menuLabel, danger && { color: colors.error }]}>{label}</Text>
-            <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
+            <Ionicons name="chevron-forward" size={16} color={danger ? colors.error : colors.textSecondary} />
         </TouchableOpacity>
     );
 }
@@ -104,7 +104,7 @@ export default function ProfileScreen({ navigation }) {
                 >
                     <TouchableOpacity onPress={handlePickAvatar} activeOpacity={0.8}>
                         <View style={styles.avatarCircle}>
-                            <Ionicons name="person" size={36} color="#fff" />
+                            <Ionicons name="person" size={34} color="#fff" />
                         </View>
                     </TouchableOpacity>
                     <View style={styles.profileInfo}>
@@ -309,44 +309,42 @@ function makeStyles(colors) {
         root:        { flex: 1 },
         container:   { flex: 1, backgroundColor: colors.backgroundSecondary },
         headerBar: {
-            backgroundColor: colors.background,
+            backgroundColor: colors.backgroundSecondary,
             paddingHorizontal: 16,
             paddingTop: 56,
-            paddingBottom: 12,
-            borderBottomWidth: 1,
-            borderBottomColor: colors.border,
+            paddingBottom: 10,
             zIndex: 10,
         },
-        headerTitle: { fontSize: 20, fontFamily: F.bold, color: colors.text },
+        headerTitle: { fontSize: 26, fontFamily: F.bold, color: colors.text },
         profileCard: {
             flexDirection: 'row',
             alignItems: 'center',
             marginHorizontal: 16,
-            marginTop: 16,
-            borderRadius: 12,
+            marginTop: 14,
+            borderRadius: 14,
             padding: 16,
         },
         avatarCircle: {
-            width: 48,
-            height: 48,
-            borderRadius: 24,
-            backgroundColor: 'rgba(255,255,255,0.3)',
+            width: 52,
+            height: 52,
+            borderRadius: 26,
+            backgroundColor: 'rgba(255,255,255,0.25)',
             alignItems: 'center',
             justifyContent: 'center',
         },
         avatarInitial: { fontSize: 20, fontFamily: F.bold, color: '#fff' },
         profileInfo:   { marginLeft: 14, flex: 1 },
-        profileName:   { fontSize: 16, fontFamily: F.bold, color: '#fff' },
-        profilePhone:  { fontSize: 12, fontFamily: F.regular, color: 'rgba(255,255,255,0.85)', marginTop: 2 },
+        profileName:   { fontSize: 17, fontFamily: F.bold, color: '#fff' },
+        profilePhone:  { fontSize: 13, fontFamily: F.regular, color: 'rgba(255,255,255,0.85)', marginTop: 2 },
         roleBadge: {
             alignSelf: 'flex-start',
             backgroundColor: colors.success,
             borderRadius: 6,
-            paddingHorizontal: 8,
+            paddingHorizontal: 9,
             paddingVertical: 3,
-            marginTop: 6,
+            marginTop: 7,
         },
-        roleBadgeText: { fontSize: 11, fontFamily: F.semibold, color: '#fff' },
+        roleBadgeText: { fontSize: 11, fontFamily: F.bold, color: '#fff', letterSpacing: 0.4 },
         sectionTitle: {
             fontSize: 12,
             fontFamily: F.semibold,
@@ -360,12 +358,12 @@ function makeStyles(colors) {
             backgroundColor: colors.background,
             borderWidth: 1,
             borderColor: colors.border,
-            borderRadius: 10,
+            borderRadius: 12,
             shadowColor: '#000',
             shadowOffset: { width: 0, height: 2 },
-            shadowOpacity: 0.08,
+            shadowOpacity: 0.06,
             shadowRadius: 8,
-            elevation: 3,
+            elevation: 2,
             marginHorizontal: 16,
             padding: 0,
             overflow: 'hidden',
