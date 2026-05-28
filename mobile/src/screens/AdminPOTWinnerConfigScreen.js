@@ -11,8 +11,8 @@ import { F } from '../theme';
 
 const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
-// Column widths (must match header + row layout)
-const COL = { month: 50, name: 90, winner: 130, winnerEmi: 110, otherEmi: 170 };
+// Column flex ratios — distribute across screen width (no horizontal scroll)
+const COL = { month: 0.9, name: 1.7, winner: 2.4, winnerEmi: 1.9, otherEmi: 2.1 };
 
 function calculateMonthName(startDate, monthOffset) {
     const base = startDate ? new Date(startDate) : new Date();
@@ -44,6 +44,7 @@ export default function AdminPOTWinnerConfigScreen({ route, navigation }) {
     // Save-warning modal (shown when at least one row's Winner EMI differs from group default)
     const [warn, setWarn] = useState(null);  // { payload, divergent: [{ month, monthName, winnerEMI }], groupWinnerEmi }
     const [showInfo, setShowInfo] = useState(false);
+    const [summaryOpen, setSummaryOpen] = useState(false);
 
     useEffect(() => {
         let cancelled = false;
@@ -179,136 +180,146 @@ export default function AdminPOTWinnerConfigScreen({ route, navigation }) {
         <View style={styles.root}>
             {/* Header */}
             <View style={styles.header}>
-                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-                    <Ionicons name="chevron-back" size={22} color={colors.text} />
-                    <Text style={styles.backTxt}>Groups</Text>
-                </TouchableOpacity>
+                <View style={styles.headerTopRow}>
+                    <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+                        <Ionicons name="chevron-back" size={22} color={colors.text} />
+                        <Text style={styles.backTxt}>Groups</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={styles.headerInfoBtn}
+                        onPress={() => setShowInfo(true)}
+                        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                        activeOpacity={0.7}
+                    >
+                        <Ionicons name="information-circle-outline" size={22} color={colors.primary} />
+                    </TouchableOpacity>
+                </View>
                 <Text style={styles.title}>Configure POT Winners</Text>
-                <Text style={styles.groupName}>{group?.name}</Text>
+                <TouchableOpacity style={styles.groupNameRow} onPress={() => setSummaryOpen(v => !v)} activeOpacity={0.7}>
+                    <Text style={styles.groupName}>{group?.name}</Text>
+                    <Ionicons
+                        name={summaryOpen ? 'chevron-up' : 'chevron-down'}
+                        size={14}
+                        color={colors.textSecondary}
+                        style={{ marginLeft: 4 }}
+                    />
+                </TouchableOpacity>
             </View>
 
-            {/* Group Summary Card with info-icon (tap to view instructions) */}
-            <View style={styles.summaryCard}>
-                <TouchableOpacity
-                    style={styles.summaryInfoBtn}
-                    onPress={() => setShowInfo(true)}
-                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                    activeOpacity={0.7}
-                >
-                    <Ionicons name="information-circle-outline" size={20} color={colors.primary} />
-                </TouchableOpacity>
-                <View style={styles.summaryRow}>
-                    <SummaryTile
-                        label="POT Amount"
-                        value={`₹${(group?.potAmount || 0).toLocaleString('en-IN')}`}
-                        accent
-                        colors={colors}
-                        styles={styles}
-                    />
-                    <SummaryTile
-                        label="Members"
-                        value={String(group?.members?.length || 0)}
-                        colors={colors}
-                        styles={styles}
-                    />
+            {/* Group Summary Card — collapsed by default, toggled via group name row */}
+            {summaryOpen && (
+                <View style={styles.summaryCard}>
+                    <View style={styles.summaryRow}>
+                        <SummaryTile
+                            label="POT Amount"
+                            value={`₹${(group?.potAmount || 0).toLocaleString('en-IN')}`}
+                            accent
+                            colors={colors}
+                            styles={styles}
+                        />
+                        <SummaryTile
+                            label="Members"
+                            value={String(group?.members?.length || 0)}
+                            colors={colors}
+                            styles={styles}
+                        />
+                    </View>
+                    <View style={styles.summaryRow}>
+                        <SummaryTile
+                            label="Duration"
+                            value={`${group?.totalMonths || 0} months`}
+                            colors={colors}
+                            styles={styles}
+                        />
+                        <SummaryTile
+                            label="Fixed EMI (Winner)"
+                            value={`₹${(group?.emiAmount || 0).toLocaleString('en-IN')}`}
+                            colors={colors}
+                            styles={styles}
+                        />
+                    </View>
                 </View>
-                <View style={styles.summaryRow}>
-                    <SummaryTile
-                        label="Duration"
-                        value={`${group?.totalMonths || 0} months`}
-                        colors={colors}
-                        styles={styles}
-                    />
-                    <SummaryTile
-                        label="Fixed EMI (Winner)"
-                        value={`₹${(group?.emiAmount || 0).toLocaleString('en-IN')}`}
-                        colors={colors}
-                        styles={styles}
-                    />
-                </View>
-            </View>
+            )}
 
             {/* Table */}
-            <ScrollView horizontal showsHorizontalScrollIndicator>
-                <View>
-                    {/* Header row */}
-                    <View style={[styles.row, styles.headerRow]}>
-                        <Text style={[styles.cellHeader, { width: COL.month     }]}>Month</Text>
-                        <Text style={[styles.cellHeader, { width: COL.name      }]}>Month Name</Text>
-                        <Text style={[styles.cellHeader, { width: COL.winner    }]}>POT Winner</Text>
-                        <Text style={[styles.cellHeader, { width: COL.winnerEmi }]}>Winner EMI</Text>
-                        <Text style={[styles.cellHeader, { width: COL.otherEmi  }]}>Reducing EMI (non winners)</Text>
-                    </View>
-
-                    {/* Data rows */}
-                    <ScrollView style={styles.body}>
-                        {rows.map((r, idx) => {
-                            const alt     = idx % 2 === 1;
-                            const locked  = r.locked;
-                            const current = r.current;
-                            return (
-                                <View
-                                    key={r.month}
-                                    style={[
-                                        styles.row,
-                                        { backgroundColor: alt ? colors.backgroundSecondary : colors.background },
-                                        locked && styles.lockedRow,
-                                        current && styles.currentRow,
-                                    ]}
-                                >
-                                    <Text style={[styles.cell, { width: COL.month, textAlign: 'center' }]}>
-                                        {r.month}
-                                    </Text>
-                                    <Text style={[styles.cell, { width: COL.name }]}>{r.monthName}</Text>
-
-                                    {/* Winner picker */}
-                                    <TouchableOpacity
-                                        style={[styles.pickerBtn, { width: COL.winner - 8 }]}
-                                        disabled={locked}
-                                        onPress={() => setPickerMonth(r.month)}
-                                        activeOpacity={0.75}
-                                    >
-                                        <Text
-                                            style={[
-                                                styles.pickerTxt,
-                                                !r.selectedWinner && { color: colors.textSecondary },
-                                                locked && { color: colors.textTertiary },
-                                            ]}
-                                            numberOfLines={1}
-                                        >
-                                            {r.selectedWinner ? memberLabel(r.selectedWinner) : 'Select…'}
-                                        </Text>
-                                        {!locked && <Ionicons name="chevron-down" size={12} color={colors.textSecondary} />}
-                                    </TouchableOpacity>
-
-                                    {/* Winner EMI input (editable; warns on save if it differs from group default) */}
-                                    <TextInput
-                                        style={[styles.input, { width: COL.winnerEmi - 8 }, locked && styles.inputLocked]}
-                                        value={r.winnerEMI}
-                                        onChangeText={v => updateRow(r.month, { winnerEMI: v.replace(/[^0-9.]/g, '') })}
-                                        editable={!locked}
-                                        keyboardType="numeric"
-                                        placeholder="0"
-                                        placeholderTextColor={colors.textTertiary}
-                                    />
-
-                                    {/* Other Member EMI input */}
-                                    <TextInput
-                                        style={[styles.input, { width: COL.otherEmi - 8 }, locked && styles.inputLocked]}
-                                        value={r.otherMemberEMI}
-                                        onChangeText={v => updateRow(r.month, { otherMemberEMI: v.replace(/[^0-9.]/g, '') })}
-                                        editable={!locked}
-                                        keyboardType="numeric"
-                                        placeholder="0"
-                                        placeholderTextColor={colors.textTertiary}
-                                    />
-                                </View>
-                            );
-                        })}
-                        <View style={{ height: 120 }} />
-                    </ScrollView>
+            <View style={styles.tableWrap}>
+                {/* Header row */}
+                <View style={[styles.row, styles.headerRow]}>
+                    <Text style={[styles.cellHeader, { flex: COL.month, textAlign: 'center' }]}>Mo.</Text>
+                    <Text style={[styles.cellHeader, { flex: COL.name      }]}>Month</Text>
+                    <Text style={[styles.cellHeader, { flex: COL.winner    }]}>POT Winner</Text>
+                    <Text style={[styles.cellHeader, { flex: COL.winnerEmi }]}>Winner EMI</Text>
+                    <Text style={[styles.cellHeader, { flex: COL.otherEmi  }]}>Reducing EMI</Text>
                 </View>
-            </ScrollView>
+
+                {/* Data rows */}
+                <ScrollView style={styles.body}>
+                    {rows.map((r, idx) => {
+                        const alt     = idx % 2 === 1;
+                        const locked  = r.locked;
+                        const current = r.current;
+                        return (
+                            <View
+                                key={r.month}
+                                style={[
+                                    styles.row,
+                                    { backgroundColor: alt ? colors.backgroundSecondary : colors.background },
+                                    locked && styles.lockedRow,
+                                    current && styles.currentRow,
+                                ]}
+                            >
+                                <Text style={[styles.cell, { flex: COL.month, textAlign: 'center' }]}>
+                                    {r.month}
+                                </Text>
+                                <Text style={[styles.cell, { flex: COL.name }]} numberOfLines={2}>{r.monthName}</Text>
+
+                                {/* Winner picker */}
+                                <TouchableOpacity
+                                    style={[styles.pickerBtn, { flex: COL.winner }]}
+                                    disabled={locked}
+                                    onPress={() => setPickerMonth(r.month)}
+                                    activeOpacity={0.75}
+                                >
+                                    <Text
+                                        style={[
+                                            styles.pickerTxt,
+                                            !r.selectedWinner && { color: colors.textSecondary },
+                                            locked && { color: colors.textTertiary },
+                                        ]}
+                                        numberOfLines={1}
+                                    >
+                                        {r.selectedWinner ? memberLabel(r.selectedWinner) : 'Select…'}
+                                    </Text>
+                                    {!locked && <Ionicons name="chevron-down" size={12} color={colors.textSecondary} />}
+                                </TouchableOpacity>
+
+                                {/* Winner EMI input (editable; warns on save if it differs from group default) */}
+                                <TextInput
+                                    style={[styles.input, { flex: COL.winnerEmi }, locked && styles.inputLocked]}
+                                    value={r.winnerEMI}
+                                    onChangeText={v => updateRow(r.month, { winnerEMI: v.replace(/[^0-9.]/g, '') })}
+                                    editable={!locked}
+                                    keyboardType="numeric"
+                                    placeholder="0"
+                                    placeholderTextColor={colors.textTertiary}
+                                />
+
+                                {/* Other Member EMI input */}
+                                <TextInput
+                                    style={[styles.input, { flex: COL.otherEmi }, locked && styles.inputLocked]}
+                                    value={r.otherMemberEMI}
+                                    onChangeText={v => updateRow(r.month, { otherMemberEMI: v.replace(/[^0-9.]/g, '') })}
+                                    editable={!locked}
+                                    keyboardType="numeric"
+                                    placeholder="0"
+                                    placeholderTextColor={colors.textTertiary}
+                                />
+                            </View>
+                        );
+                    })}
+                    <View style={{ height: 120 }} />
+                </ScrollView>
+            </View>
 
             {/* Save button */}
             <View style={styles.footer}>
@@ -503,27 +514,25 @@ function makeStyles(colors) {
         // Header
         header: {
             paddingTop: 56, paddingHorizontal: 16, paddingBottom: 10,
-            borderBottomWidth: 1, borderBottomColor: colors.border,
             backgroundColor: colors.background,
         },
-        backBtn:   { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
-        backTxt:   { fontSize: 13, fontFamily: F.medium, color: colors.text, marginLeft: 2 },
-        title:     { fontSize: 20, fontFamily: F.bold, color: colors.text, marginTop: 4 },
-        groupName: { fontSize: 13, fontFamily: F.regular, color: colors.textSecondary, marginTop: 2 },
+        headerTopRow: {
+            flexDirection: 'row', alignItems: 'center',
+            justifyContent: 'space-between', marginBottom: 2,
+        },
+        backBtn:       { flexDirection: 'row', alignItems: 'center' },
+        backTxt:       { fontSize: 13, fontFamily: F.medium, color: colors.text, marginLeft: 2 },
+        headerInfoBtn: { padding: 2 },
+        title:         { fontSize: 20, fontFamily: F.bold, color: colors.text, marginTop: 4 },
+        groupNameRow:  { flexDirection: 'row', alignItems: 'center', marginTop: 2 },
+        groupName:     { fontSize: 13, fontFamily: F.regular, color: colors.textSecondary },
 
         // Group Summary Card
         summaryCard: {
-            marginHorizontal: 16, marginTop: 12, marginBottom: 8,
+            marginHorizontal: 16, marginTop: 4, marginBottom: 8,
             backgroundColor: colors.backgroundSecondary,
             borderRadius: 12, borderWidth: 1, borderColor: colors.border,
-            padding: 12, position: 'relative',
-        },
-        summaryInfoBtn: {
-            position: 'absolute', top: 8, right: 8, zIndex: 2,
-            width: 28, height: 28, borderRadius: 14,
-            alignItems: 'center', justifyContent: 'center',
-            backgroundColor: colors.background,
-            borderWidth: 1, borderColor: colors.primary,
+            padding: 12,
         },
         summaryRow: {
             flexDirection: 'row',
@@ -539,6 +548,7 @@ function makeStyles(colors) {
         },
 
         // Table
+        tableWrap: { flex: 1 },
         headerRow: {
             backgroundColor: colors.backgroundTertiary,
             borderBottomWidth: 1, borderBottomColor: colors.border,
@@ -546,19 +556,19 @@ function makeStyles(colors) {
         row: {
             flexDirection: 'row', alignItems: 'center',
             borderBottomWidth: 1, borderBottomColor: colors.border,
-            paddingVertical: 8, paddingHorizontal: 8,
+            paddingVertical: 8, paddingHorizontal: 8, gap: 6,
         },
         lockedRow:   { opacity: 0.6, backgroundColor: colors.backgroundTertiary },
         currentRow:  {
             backgroundColor: colors.primaryLight,
             borderLeftWidth: 3, borderLeftColor: colors.primary,
         },
-        cellHeader:  { fontSize: 11, fontFamily: F.semibold, color: colors.textSecondary, paddingHorizontal: 4 },
-        cell:        { fontSize: 12, fontFamily: F.regular,  color: colors.text,          paddingHorizontal: 4 },
+        cellHeader:  { fontSize: 10, fontFamily: F.semibold, color: colors.textSecondary },
+        cell:        { fontSize: 12, fontFamily: F.regular,  color: colors.text },
 
         // Picker button (winner cell)
         pickerBtn: {
-            height: 40, paddingHorizontal: 8, marginRight: 8,
+            height: 40, paddingHorizontal: 6,
             borderWidth: 1, borderColor: colors.border, borderRadius: 8,
             flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
             backgroundColor: colors.background,
@@ -567,14 +577,14 @@ function makeStyles(colors) {
 
         // Inputs
         input: {
-            height: 40, paddingHorizontal: 8, marginRight: 8,
+            height: 40, paddingHorizontal: 6,
             borderWidth: 1, borderColor: colors.border, borderRadius: 8,
             fontSize: 13, fontFamily: F.regular, color: colors.text,
             backgroundColor: colors.background,
         },
         inputLocked:    { color: colors.textTertiary, backgroundColor: colors.backgroundTertiary },
 
-        body: { maxHeight: '100%' },
+        body: { flex: 1 },
 
         // Footer
         footer: {

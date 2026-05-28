@@ -32,7 +32,7 @@ export default function MemberCard({ member, isWinner, isPastWinner, winnerMonth
     // ── Current POT holder — primary gradient (matches home summary banner) ──
     if (isWinner) {
         return (
-            <TouchableOpacity style={styles.gradCard} onPress={onPress} activeOpacity={0.75}>
+            <TouchableOpacity style={styles.gradCard} onPress={onPress} disabled={!onPress} activeOpacity={0.75}>
                 <LinearGradient
                     colors={[colors.primary, colors.primaryDark]}
                     start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
@@ -51,7 +51,7 @@ export default function MemberCard({ member, isWinner, isPastWinner, winnerMonth
                         <Text style={[styles.statusTxt, { color: statusColor }]}>{ps.label}</Text>
                         {emiAmount ? <Text style={[styles.emi, { color: '#fff' }]}>₹{emiAmount.toLocaleString()}</Text> : null}
                     </View>
-                    <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.5)" style={{ marginLeft: 4 }} />
+                    {onPress ? <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.5)" style={{ marginLeft: 4 }} /> : null}
                 </LinearGradient>
             </TouchableOpacity>
         );
@@ -59,7 +59,7 @@ export default function MemberCard({ member, isWinner, isPastWinner, winnerMonth
 
     // ── Past winners + regular members ───────────────────────────────────────
     return (
-        <TouchableOpacity style={styles.plainCard} onPress={onPress} activeOpacity={0.75}>
+        <TouchableOpacity style={styles.plainCard} onPress={onPress} disabled={!onPress} activeOpacity={0.75}>
             <View style={styles.rankCircle}>
                 {isPastWinner
                     ? <Text style={[styles.rankNum, { color: colors.primary }]}>{winnerMonth}</Text>
@@ -83,7 +83,7 @@ export default function MemberCard({ member, isWinner, isPastWinner, winnerMonth
                 <Text style={[styles.statusTxt, { color: statusColor }]}>{ps.label}</Text>
                 {emiAmount ? <Text style={[styles.emi, { color: colors.text }]}>₹{emiAmount.toLocaleString()}</Text> : null}
             </View>
-            <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} style={{ marginLeft: 4 }} />
+            {onPress ? <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} style={{ marginLeft: 4 }} /> : null}
         </TouchableOpacity>
     );
 }

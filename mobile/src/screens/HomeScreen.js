@@ -1,139 +1,34 @@
 import React, { useMemo, useState, useCallback } from 'react';
 import {
     View, Text, ScrollView, RefreshControl, TouchableOpacity,
-    StyleSheet, ActivityIndicator, Dimensions,
+    StyleSheet,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
-import { getGroups, getAdminDashboard, getGroupHealth, getMyPendingPayments } from '../services/api';
-
-const SW = Dimensions.get('window').width;
-import Avatar from '../components/Avatar';
+import { getGroups, getMyPendingPayments } from '../services/api';
 import GroupCard from '../components/GroupCard';
 import NotificationsBell from '../components/NotificationsBell';
 import { F } from '../theme';
 
-// ── Admin Home ───────────────────────────────────────────────────────────────
-
-function AdminHomeView({ navigation, user, colors }) {
-    const [stats, setStats] = useState(null);
-    const [health, setHealth] = useState([]);
-    const [refreshing, setRefreshing] = useState(false);
-
-    const loadData = async () => {
-        try {
-            const [dashRes, healthRes] = await Promise.all([
-                getAdminDashboard(),
-                getGroupHealth(),
-            ]);
-            setStats(dashRes.data.stats);
-            setHealth(healthRes.data.groups || []);
-        } catch (err) {
-            console.log('Admin home load error:', err.message);
-        }
-    };
-
-    useFocusEffect(useCallback(() => { loadData(); }, []));
-
-    const onRefresh = async () => {
-        setRefreshing(true);
-        await loadData();
-        setRefreshing(false);
-    };
-
-    const hour = new Date().getHours();
-    const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
-    const styles = useMemo(() => makeStyles(colors), [colors]);
-
-    return (
-        <View style={styles.container}>
-            <View style={styles.header}>
-                <View>
-                    <Text style={styles.greeting}>{greeting},</Text>
-                    <Text style={styles.name}>{user?.name || 'Admin'}</Text>
-                </View>
-                <TouchableOpacity onPress={() => navigation.navigate('Profile')}>
-                    <Avatar uri={user?.avatar} name={user?.name} size={46} />
-                </TouchableOpacity>
-            </View>
-
-            <ScrollView
-                style={{ flex: 1 }}
-                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
-            >
-
-            {/* Gradient Stat Cards */}
-            {stats && (
-                <View style={styles.statGrid}>
-                    <GradientCard icon="people" label="Total Groups" value={stats.totalGroups} colors={colors} />
-                    <GradientCard icon="person" label="Members" value={stats.totalUsers} colors={colors} />
-                    <GradientCard icon="time" label="Pending" value={stats.pendingCount} colors={colors} />
-                    <GradientCard icon="wallet"
-                        label="Collected"
-                        value={`₹${((stats.verifiedAmount || 0) / 1000).toFixed(0)}K`}
-                        colors={colors}
-                    />
-                </View>
-            )}
-
-            {/* Quick Actions */}
-            <Text style={styles.sectionTitle}>Quick Actions</Text>
-            <View style={styles.actionsRow}>
-                <QuickAction icon="card" label="Payments" onPress={() => navigation.navigate('Admin')} colors={colors} />
-                <QuickAction icon="people" label="Groups" onPress={() => navigation.navigate('Groups')} colors={colors} />
-                <QuickAction icon="refresh-circle" label="New Cycle" onPress={() => navigation.navigate('Admin')} colors={colors} />
-                <QuickAction icon="notifications" label="Notify" onPress={() => navigation.navigate('Admin')} colors={colors} />
-            </View>
-
-            {/* Pending Actions Alert */}
-            {stats?.pendingCount > 0 && (
-                <TouchableOpacity
-                    style={styles.pendingAlert}
-                    onPress={() => navigation.navigate('Admin')}
-                    activeOpacity={0.85}
-                >
-                    <View style={styles.pendingAlertLeft}>
-                        <Ionicons name="alert-circle" size={22} color={colors.error} />
-                        <View style={styles.pendingAlertText}>
-                            <Text style={styles.pendingAlertTitle}>
-                                {stats.pendingCount} Payments Need Verification
-                            </Text>
-                            <Text style={styles.pendingAlertSub}>Tap to review and verify</Text>
-                        </View>
-                    </View>
-                    <Ionicons name="chevron-forward" size={18} color={colors.error} />
-                </TouchableOpacity>
-            )}
-
-            {/* Group Health */}
-            {health.length > 0 && (
-                <>
-                    <Text style={styles.sectionTitle}>Group Health</Text>
-                    {health.slice(0, 3).map(g => (
-                        <View key={g._id} style={styles.healthCard}>
-                            <View style={styles.healthRow}>
-                                <Text style={styles.healthName}>{g.name}</Text>
-                                <Text style={styles.healthPct}>{g.percentage}%</Text>
-                            </View>
-                            <View style={styles.progressBar}>
-                                <View style={[styles.progressFill, { width: `${g.percentage}%` }]} />
-                            </View>
-                            <Text style={styles.healthSub}>{g.paid}/{g.totalMembers} paid</Text>
-                        </View>
-                    ))}
-                </>
-            )}
-
-            <View style={{ height: 90 }} />
-            </ScrollView>
-        </View>
-    );
+function timeAgo(dateStr) {
+    if (!dateStr) return '—';
+    const diff = Date.now() - new Date(dateStr).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1)  return 'just now';
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24)  return `${hrs}h ago`;
+    return `${Math.floor(hrs / 24)}d ago`;
 }
 
-// ── Member Home ──────────────────────────────────────────────────────────────
+const BADGE = {
+    pending:  { bg: '#9CA3AF', label: 'Pending'  },
+    failed:   { bg: '#EF4444', label: 'Rejected' },
+    rejected: { bg: '#EF4444', label: 'Rejected' },
+};
 
 function MemberHomeView({ navigation, user, colors }) {
     const [groups, setGroups] = useState([]);
@@ -204,46 +99,57 @@ function MemberHomeView({ navigation, user, colors }) {
                 </View>
             </LinearGradient>
 
-            {/* Pending Payments */}
+            {/* Action Required — Pending / Rejected Payments */}
             {pendingPayments.length > 0 && (
                 <>
                     <View style={styles.sectionHeader}>
-                        <Text style={styles.sectionTitle}>Pending Payments</Text>
+                        <Text style={styles.sectionTitle}>ACTION REQUIRED</Text>
                         <View style={styles.pendingBadge}>
                             <Text style={styles.pendingBadgeText}>{pendingPayments.length}</Text>
                         </View>
                     </View>
-                    <ScrollView
-                        horizontal
-                        pagingEnabled
-                        showsHorizontalScrollIndicator={false}
-                        contentContainerStyle={styles.pendingScroll}
-                        snapToInterval={SW - 32 + 10}
-                        decelerationRate="fast"
-                    >
-                        {pendingPayments.map((payment) => (
-                            <View key={payment._id} style={styles.pendingCard}>
-                                <View style={styles.pendingCardLeft}>
-                                    <View style={[styles.pendingDot, { backgroundColor: colors.warning }]} />
-                                    <View>
-                                        <Text style={styles.pendingGroupName} numberOfLines={1}>
-                                            {payment.group?.name}
+                    {pendingPayments.map((payment) => {
+                        const badge      = BADGE[payment.status] || { bg: '#9CA3AF', label: 'Pending' };
+                        const isRejected = payment.status === 'failed' || payment.status === 'rejected';
+                        return (
+                            <TouchableOpacity
+                                key={payment._id}
+                                style={[styles.card, isRejected && styles.cardRejected]}
+                                onPress={() => navigation.navigate('Payments')}
+                                activeOpacity={0.75}
+                            >
+                                <View style={styles.cardInner}>
+                                    <View style={styles.avatar}>
+                                        <Ionicons name="receipt-outline" size={20} color={colors.textSecondary} />
+                                    </View>
+                                    <View style={styles.cardBody}>
+                                        <View style={styles.nameRow}>
+                                            <Text style={styles.cardName} numberOfLines={1}>
+                                                {payment.group?.name || `Month ${payment.month}`}
+                                            </Text>
+                                            <View style={[styles.badge, { backgroundColor: badge.bg }]}>
+                                                <Text style={styles.badgeTxt}>{badge.label}</Text>
+                                            </View>
+                                        </View>
+                                        <Text style={styles.meta} numberOfLines={1}>
+                                            {'₹'}{payment.amount?.toLocaleString('en-IN')}
+                                            {' · '}{(payment.paymentMethod || 'UPI').toUpperCase()}
+                                            {' · '}{timeAgo(payment.paidAt || payment.createdAt)}
                                         </Text>
-                                        <Text style={styles.pendingMeta}>
-                                            Month {payment.month}  ·  ₹{payment.amount?.toLocaleString()}
-                                        </Text>
+                                        <Text style={styles.subText}>{'Month '}{payment.month}</Text>
+                                        <TouchableOpacity
+                                            style={[styles.cardPayBtn, isRejected && { backgroundColor: '#EF4444' }]}
+                                            onPress={() => navigation.navigate('Payments')}
+                                            activeOpacity={0.85}
+                                        >
+                                            <Ionicons name={isRejected ? 'refresh' : 'card'} size={14} color="#fff" />
+                                            <Text style={styles.cardPayTxt}>{isRejected ? 'Resubmit Payment' : 'Make Payment'}</Text>
+                                        </TouchableOpacity>
                                     </View>
                                 </View>
-                                <TouchableOpacity
-                                    style={[styles.payBtn, { backgroundColor: colors.primary }]}
-                                    onPress={() => navigation.navigate('Payment', { groupId: payment.group?._id, paymentId: payment._id })}
-                                    activeOpacity={0.8}
-                                >
-                                    <Text style={styles.payBtnText}>Pay Now</Text>
-                                </TouchableOpacity>
-                            </View>
-                        ))}
-                    </ScrollView>
+                            </TouchableOpacity>
+                        );
+                    })}
                 </>
             )}
 
@@ -251,7 +157,7 @@ function MemberHomeView({ navigation, user, colors }) {
             {activeGroups.length > 0 && (
                 <>
                     <View style={styles.sectionHeader}>
-                        <Text style={styles.sectionTitle}>Active Groups</Text>
+                        <Text style={styles.sectionTitle}>ACTIVE GROUPS</Text>
                         <Text style={styles.sectionCount}>{activeGroups.length} groups</Text>
                     </View>
                     <View style={styles.groupsList}>
@@ -290,48 +196,12 @@ function MemberHomeView({ navigation, user, colors }) {
     );
 }
 
-// ── Shared sub-components ────────────────────────────────────────────────────
-
-function GradientCard({ icon, label, value, colors }) {
-    return (
-        <LinearGradient
-            colors={[colors.primary, colors.primaryDark]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={gradCardStyle}
-        >
-            <Ionicons name={icon} size={28} color="#fff" />
-            <Text style={gradValueStyle}>{value}</Text>
-            <Text style={gradLabelStyle}>{label}</Text>
-        </LinearGradient>
-    );
-}
-
-const gradCardStyle  = { width: '47%', height: 110, borderRadius: 16, padding: 16, justifyContent: 'space-between' };
-const gradValueStyle = { fontSize: 24, fontFamily: F.bold, color: '#fff' };
-const gradLabelStyle = { fontSize: 12, fontFamily: F.medium, color: 'rgba(255,255,255,0.85)' };
-
-function QuickAction({ icon, label, onPress, colors }) {
-    return (
-        <TouchableOpacity style={quickBtnStyle} onPress={onPress} activeOpacity={0.75}>
-            <View style={[quickIconStyle, { backgroundColor: colors.primaryLight }]}>
-                <Ionicons name={icon} size={22} color={colors.primary} />
-            </View>
-            <Text style={[quickLabelStyle, { color: colors.text }]}>{label}</Text>
-        </TouchableOpacity>
-    );
-}
-
-const quickBtnStyle   = { flex: 1, alignItems: 'center' };
-const quickIconStyle  = { width: 52, height: 52, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginBottom: 6 };
-const quickLabelStyle = { fontSize: 11, fontFamily: F.medium, textAlign: 'center' };
-
 // ── Root ─────────────────────────────────────────────────────────────────────
 
 export default function HomeScreen({ navigation }) {
     const { user } = useAuth();
     const { colors } = useTheme();
-    if (user?.role === 'admin') return <AdminHomeView navigation={navigation} user={user} colors={colors} />;
+    // Admins are routed to AdminDashboardScreen by the navigator; this screen is members-only.
     return <MemberHomeView navigation={navigation} user={user} colors={colors} />;
 }
 
@@ -344,19 +214,15 @@ function makeStyles(colors) {
             flexDirection: 'row',
             justifyContent: 'space-between',
             alignItems: 'center',
-            backgroundColor: colors.background,
+            backgroundColor: colors.backgroundSecondary,
             paddingHorizontal: 16,
             paddingTop: 56,
-            paddingBottom: 12,
-            borderBottomWidth: 1,
-            borderBottomColor: colors.border,
+            paddingBottom: 10,
             zIndex: 10,
         },
-        greeting:     { fontSize: 12, fontFamily: F.regular, color: colors.textSecondary },
-        name:         { fontSize: 20, fontFamily: F.bold, color: colors.text, marginTop: 2 },
-        sectionTitle: { fontSize: 16, fontFamily: F.semibold, color: colors.text },
-        // Admin stat grid
-        statGrid:     { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 16, paddingTop: 16, gap: 8 },
+        greeting:     { fontSize: 13, fontFamily: F.regular, color: colors.textSecondary },
+        name:         { fontSize: 26, fontFamily: F.bold, color: colors.text, marginTop: 2 },
+        sectionTitle: { fontSize: 11, fontFamily: F.bold, color: colors.textTertiary, letterSpacing: 0.8 },
         // Summary banner
         summaryBanner: {
             marginHorizontal: 16,
@@ -392,79 +258,41 @@ function makeStyles(colors) {
             gap: 6,
         },
         viewAllText: { fontSize: 14, fontFamily: F.semibold },
-        // Pending payments carousel
+        // Action required badge
         pendingBadge: {
             backgroundColor: colors.warning,
             borderRadius: 10, minWidth: 20, height: 20,
             alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6,
         },
         pendingBadgeText: { fontSize: 11, fontFamily: F.bold, color: '#fff' },
-        pendingScroll: { paddingHorizontal: 16, gap: 10 },
-        pendingCard: {
-            width: SW - 32,
+        // Cards — identical to PaymentScreen
+        card: {
             backgroundColor: colors.background,
-            borderRadius: 14,
-            borderWidth: 1,
-            borderColor: colors.border,
-            borderLeftWidth: 4,
-            borderLeftColor: colors.warning,
-            paddingHorizontal: 14,
-            paddingVertical: 13,
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: 2 },
-            shadowOpacity: 0.06,
-            shadowRadius: 6,
-            elevation: 2,
+            borderWidth: 1, borderColor: colors.border,
+            borderRadius: 14, marginHorizontal: 16, marginBottom: 10,
+            shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
+            shadowOpacity: 0.06, shadowRadius: 4, elevation: 2,
         },
-        pendingCardLeft: { flexDirection: 'row', alignItems: 'center', flex: 1, gap: 10 },
-        pendingDot: { width: 8, height: 8, borderRadius: 4 },
-        pendingGroupName: { fontSize: 14, fontFamily: F.semibold, color: colors.text, marginBottom: 3 },
-        pendingMeta: { fontSize: 12, fontFamily: F.regular, color: colors.textSecondary },
-        payBtn: {
-            borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8,
+        cardRejected: { borderLeftWidth: 3, borderLeftColor: '#EF4444' },
+        cardInner:    { flexDirection: 'row', alignItems: 'flex-start', padding: 14, gap: 12 },
+        avatar: {
+            width: 44, height: 44, borderRadius: 22,
+            backgroundColor: colors.backgroundSecondary,
+            alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+            borderWidth: 1, borderColor: colors.border,
         },
-        payBtnText: { fontSize: 13, fontFamily: F.semibold, color: '#fff' },
-        // Pending alert
-        pendingAlert: {
-            marginHorizontal: 16,
-            marginTop: 16,
-            backgroundColor: colors.errorLight,
-            borderRadius: 12,
-            padding: 14,
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            borderWidth: 1,
-            borderColor: colors.status.overdue.border,
+        cardBody:  { flex: 1, minWidth: 0 },
+        nameRow:   { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
+        cardName:  { flex: 1, fontSize: 15, fontFamily: F.bold, color: colors.text },
+        badge:     { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 100 },
+        badgeTxt:  { fontSize: 11, fontFamily: F.bold, color: '#fff' },
+        meta:      { fontSize: 12, fontFamily: F.semibold, color: colors.text, marginBottom: 3 },
+        subText:   { fontSize: 12, fontFamily: F.regular, color: colors.textTertiary },
+        cardPayBtn: {
+            flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+            height: 38, borderRadius: 10, backgroundColor: colors.primary, marginTop: 10,
         },
-        pendingAlertLeft:  { flexDirection: 'row', alignItems: 'center', flex: 1 },
-        pendingAlertText:  { marginLeft: 12, flex: 1 },
-        pendingAlertTitle: { fontSize: 13, fontFamily: F.semibold, color: colors.error },
-        pendingAlertSub:   { fontSize: 11, fontFamily: F.regular, color: colors.error, marginTop: 2 },
-        // Group health
-        healthCard: {
-            marginHorizontal: 16,
-            marginBottom: 10,
-            backgroundColor: colors.background,
-            borderWidth: 1,
-            borderColor: colors.border,
-            borderRadius: 12,
-            padding: 16,
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: 2 },
-            shadowOpacity: 0.08,
-            shadowRadius: 8,
-            elevation: 3,
-        },
-        healthRow:   { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
-        healthName:  { fontSize: 14, fontFamily: F.semibold, color: colors.text },
-        healthPct:   { fontSize: 14, fontFamily: F.semibold, color: colors.primary },
-        progressBar: { height: 4, backgroundColor: colors.backgroundTertiary, borderRadius: 2, overflow: 'hidden', marginBottom: 6 },
-        progressFill:{ height: 4, backgroundColor: colors.primary, borderRadius: 2 },
-        healthSub:   { fontSize: 11, fontFamily: F.regular, color: colors.textSecondary },
+        cardPayTxt: { fontSize: 13, fontFamily: F.semibold, color: '#fff' },
         // Empty state
         emptyBox: {
             margin: 16,

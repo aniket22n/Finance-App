@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { View, ActivityIndicator } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -36,6 +36,7 @@ import AdminAccountRequestsScreen from '../screens/AdminAccountRequestsScreen';
 import AdminPOTWinnerConfigScreen from '../screens/AdminPOTWinnerConfigScreen';
 import AdminAddMembersScreen from '../screens/AdminAddMembersScreen';
 import AdminPaymentOTPScreen from '../screens/AdminPaymentOTPScreen';
+import PaymentDetailScreen from '../screens/PaymentDetailScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -111,7 +112,25 @@ function MainTabs() {
 
 export default function AppNavigator() {
     const { user, loading } = useAuth();
-    const { colors } = useTheme();
+    const { colors, isDark } = useTheme();
+
+    // Theme NavigationContainer so the navigator's underlying container background matches
+    // the app theme. Prevents the white flash visible during native-stack push transitions
+    // before the destination screen's contentStyle paints.
+    const navTheme = useMemo(() => {
+        const base = isDark ? DarkTheme : DefaultTheme;
+        return {
+            ...base,
+            colors: {
+                ...base.colors,
+                background: colors.background,
+                card: colors.background,
+                border: colors.border,
+                text: colors.text,
+                primary: colors.primary,
+            },
+        };
+    }, [isDark, colors]);
 
     if (loading) {
         return (
@@ -122,7 +141,7 @@ export default function AppNavigator() {
     }
 
     return (
-        <NavigationContainer>
+        <NavigationContainer theme={navTheme}>
             <Stack.Navigator
                 screenOptions={{
                     headerShown: false,
@@ -169,6 +188,11 @@ export default function AppNavigator() {
                         <Stack.Screen
                             name="AdminPaymentOTP"
                             component={AdminPaymentOTPScreen}
+                            options={{ headerShown: false }}
+                        />
+                        <Stack.Screen
+                            name="PaymentDetail"
+                            component={PaymentDetailScreen}
                             options={{ headerShown: false }}
                         />
                     </>

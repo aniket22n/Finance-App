@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import {
     View, Text, TextInput, TouchableOpacity, StyleSheet,
-    KeyboardAvoidingView, Platform, ActivityIndicator,
+    KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { adminVerifyPayment, adminRejectPayment, adminChangePaymentStatus, requestPaymentActionOtp } from '../services/api';
@@ -27,8 +27,11 @@ export default function AdminPaymentOTPScreen({ route, navigation }) {
     const [otpError, setOtpError] = useState('');
     const [loading, setLoading] = useState(false);
     const [resending, setResending] = useState(false);
+    const [reason, setReason] = useState('');
     const { toast, show } = useToast();
     const refs = useRef([]);
+
+    const isRejectAction = action === 'reject' || action === 'change-to-rejected';
 
     const otp = digits.join('');
     const canConfirm = otp.length === OTP_LENGTH;
@@ -65,11 +68,11 @@ export default function AdminPaymentOTPScreen({ route, navigation }) {
             if (action === 'verify') {
                 res = await adminVerifyPayment(paymentId, otp);
             } else if (action === 'reject') {
-                res = await adminRejectPayment(paymentId, otp);
+                res = await adminRejectPayment(paymentId, otp, reason.trim() || undefined);
             } else if (action === 'change-to-verified') {
                 res = await adminChangePaymentStatus(paymentId, 'verified', otp);
             } else if (action === 'change-to-rejected') {
-                res = await adminChangePaymentStatus(paymentId, 'rejected', otp);
+                res = await adminChangePaymentStatus(paymentId, 'rejected', otp, reason.trim() || undefined);
             }
 
             const isAccepted = action === 'verify' || action === 'change-to-verified';
@@ -122,12 +125,31 @@ export default function AdminPaymentOTPScreen({ route, navigation }) {
                 </TouchableOpacity>
             </View>
 
+            <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
             <View style={styles.body}>
                 <Text style={[styles.title, { color: meta.color }]}>{meta.title}</Text>
                 <Text style={styles.subtitle}>{meta.desc}</Text>
                 <Text style={styles.paymentInfo}>
                     ₹{amount?.toLocaleString()} · {memberName}
                 </Text>
+
+                {/* Rejection reason — only shown for reject actions */}
+                {isRejectAction && (
+                    <View style={styles.reasonWrap}>
+                        <Text style={styles.reasonLabel}>Rejection Reason <Text style={styles.reasonOptional}>(optional)</Text></Text>
+                        <TextInput
+                            style={[styles.reasonInput, webOutlineReset]}
+                            placeholder="e.g. Wrong UPI ref, blurry receipt…"
+                            placeholderTextColor={colors.textTertiary}
+                            value={reason}
+                            onChangeText={setReason}
+                            multiline
+                            numberOfLines={2}
+                            editable={!loading}
+                            returnKeyType="done"
+                        />
+                    </View>
+                )}
 
                 <View style={styles.otpRow}>
                     {digits.map((digit, i) => (
@@ -188,6 +210,8 @@ export default function AdminPaymentOTPScreen({ route, navigation }) {
                 </TouchableOpacity>
             </View>
 
+            </ScrollView>
+
             <Toast {...toast} />
         </KeyboardAvoidingView>
     );
@@ -204,14 +228,28 @@ function makeStyles(colors) {
         },
         backBtn: { width: 40, height: 40, alignItems: 'flex-start', justifyContent: 'center' },
 
-        body: { paddingHorizontal: 24 },
+        scroll:        { flex: 1 },
+        scrollContent: { flexGrow: 1 },
+        body: { paddingHorizontal: 24, paddingBottom: 40 },
         title: { fontSize: 22, fontFamily: F.bold, marginBottom: 6 },
         subtitle: { fontSize: 13, fontFamily: F.regular, color: colors.textSecondary, marginBottom: 4 },
         paymentInfo: {
             fontSize: 14,
             fontFamily: F.semibold,
             color: colors.text,
-            marginBottom: 40,
+            marginBottom: 24,
+        },
+
+        // Rejection reason
+        reasonWrap: { marginBottom: 24 },
+        reasonLabel: { fontSize: 13, fontFamily: F.medium, color: colors.text, marginBottom: 6 },
+        reasonOptional: { fontSize: 12, fontFamily: F.regular, color: colors.textSecondary },
+        reasonInput: {
+            borderWidth: 1, borderColor: colors.border, borderRadius: 10,
+            paddingHorizontal: 12, paddingVertical: 10,
+            fontSize: 13, fontFamily: F.regular, color: colors.text,
+            backgroundColor: colors.backgroundSecondary,
+            textAlignVertical: 'top', minHeight: 64,
         },
 
         otpRow: {

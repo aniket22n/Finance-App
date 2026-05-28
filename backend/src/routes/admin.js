@@ -731,7 +731,9 @@ router.post('/payments/:id/reject', auth, adminOnly, async (req, res) => {
 
         const { notifyUsers } = require('../utils/notify');
         const title = 'Payment Rejected';
-        const body = `Your payment of ₹${payment.amount.toLocaleString('en-IN')} was rejected. Please resubmit your payment.`;
+        const body = reason
+            ? `Your payment of ₹${payment.amount.toLocaleString('en-IN')} was rejected: ${reason}. Please resubmit.`
+            : `Your payment of ₹${payment.amount.toLocaleString('en-IN')} was rejected. Please resubmit.`;
         if (payment.user?.expoPushToken) {
             sendPushNotification(payment.user.expoPushToken, title, body, { paymentId: String(payment._id) }).catch(() => {});
         }
@@ -750,7 +752,7 @@ router.post('/payments/:id/reject', auth, adminOnly, async (req, res) => {
 // POST /api/admin/payments/:id/change-status — Change verified ↔ rejected
 router.post('/payments/:id/change-status', auth, adminOnly, async (req, res) => {
     try {
-        const { newStatus, otp } = req.body;
+        const { newStatus, otp, reason } = req.body;
         if (!otp) return res.status(400).json({ success: false, message: 'OTP is required' });
         if (!['verified', 'rejected'].includes(newStatus)) {
             return res.status(400).json({ success: false, message: 'newStatus must be verified or rejected' });
@@ -787,8 +789,11 @@ router.post('/payments/:id/change-status', auth, adminOnly, async (req, res) => 
             payment.status = 'rejected';
             payment.verifiedAt = new Date();
             payment.verifiedBy = req.user._id;
+            if (reason) payment.notes = reason;
             title = 'Payment Rejected';
-            body = `Your payment of ₹${payment.amount.toLocaleString('en-IN')} was rejected. Please resubmit your payment.`;
+            body = reason
+                ? `Your payment of ₹${payment.amount.toLocaleString('en-IN')} was rejected: ${reason}. Please resubmit.`
+                : `Your payment of ₹${payment.amount.toLocaleString('en-IN')} was rejected. Please resubmit.`;
             notifType = 'payment_rejected';
         }
 

@@ -58,8 +58,8 @@ export default function AdminAddMembersScreen({ route, navigation }) {
     const overfilled     = memberCount > requiredCount;
     const exactlyFull    = memberCount === requiredCount && requiredCount > 0;
     const progressPct    = requiredCount > 0 ? Math.min(100, (memberCount / requiredCount) * 100) : 0;
-    // Roster is locked once the first cycle has been drawn — backend enforces this too.
-    const rosterLocked   = (group?.currentMonth || 0) > 0;
+    // Roster is locked once the group is activated OR the first draw has been run.
+    const rosterLocked   = group?.status === 'active' || (group?.currentMonth || 0) > 0;
 
     const filtered = useMemo(() => {
         const q = search.trim().toLowerCase();
@@ -83,7 +83,10 @@ export default function AdminAddMembersScreen({ route, navigation }) {
 
     const toggleMember = async (user) => {
         if (rosterLocked) {
-            show('Member list is locked — the first draw has already been executed', 'warning');
+            const msg = group?.status === 'active'
+                ? 'Member list is locked — group has been activated'
+                : 'Member list is locked — the first draw has already been executed';
+            show(msg, 'warning');
             return;
         }
         const isMember = memberIds.has(String(user._id));

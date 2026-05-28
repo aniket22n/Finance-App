@@ -12,7 +12,7 @@
  * @param {String} winnerId - User ID of this month's pot winner
  * @returns {Array} - Array of { userId, amount, isWinner }
  */
-function calculateMonthlyDues(group, winnerId, emiAmount, reducedEmi) {
+function calculateMonthlyDues(group, winnerId, emiAmount, reducedEmi, pastWinnerIds = []) {
     const ea = emiAmount != null ? emiAmount : group.emiAmount;
     const re = reducedEmi != null ? reducedEmi : group.reducedEmi;
     const dues = [];
@@ -20,12 +20,15 @@ function calculateMonthlyDues(group, winnerId, emiAmount, reducedEmi) {
     for (const memberId of group.members) {
         // Members may be ObjectIds or populated User docs
         const memberIdStr = (memberId._id || memberId).toString();
-        const isWinner = memberIdStr === winnerId.toString();
+        const isCurrentWinner = memberIdStr === winnerId.toString();
+        // Past winners also pay the fixed EMI — they already received the pot,
+        // so reducedEmi only applies to members who haven't won yet.
+        const isAnyWinner = isCurrentWinner || pastWinnerIds.includes(memberIdStr);
 
         dues.push({
             userId: memberIdStr,
-            amount: isWinner ? ea : re,
-            isWinner,
+            amount: isAnyWinner ? ea : re,
+            isWinner: isCurrentWinner,
         });
     }
 

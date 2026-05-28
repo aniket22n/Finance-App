@@ -341,7 +341,7 @@ export default function AdminGroupsScreen({ navigation }) {
                                     onPress={() => navigation.navigate('AdminPOTWinnerConfig', { groupId: group._id })}
                                 >
                                     <Ionicons name="settings-outline" size={18} color={colors.textSecondary} />
-                                    <Text style={styles.iconLabel}>Config</Text>
+                                    <Text style={styles.iconLabel}>POT Plan</Text>
                                 </TouchableOpacity>
                                 <TouchableOpacity
                                     style={styles.iconBtn}

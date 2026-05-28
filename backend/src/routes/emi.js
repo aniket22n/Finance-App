@@ -96,8 +96,9 @@ router.post('/cycle', auth, adminOnly, createCycleValidations, validate, async (
         }
         await group.save();
 
-        // Create pending payment records for all members using per-month amounts
-        const dues = calculateMonthlyDues(group, winnerId, monthEmi, monthReduced);
+        // Create pending payment records for all members using per-month amounts.
+        // pastWinnerIds ensures prior winners also pay emiAmount, not reducedEmi.
+        const dues = calculateMonthlyDues(group, winnerId, monthEmi, monthReduced, pastWinnerIds);
         for (const due of dues) {
             await Payment.findOneAndUpdate(
                 { user: due.userId, group: groupId, month: nextMonth },
@@ -123,7 +124,7 @@ router.post('/cycle', auth, adminOnly, createCycleValidations, validate, async (
             sendPushNotification(
                 winnerMember.expoPushToken,
                 'Congratulations! You won the pot!',
-                `You are the pot holder for Month ${nextMonth} in ${group.name}. Your EMI is now ₹${monthReduced}.`,
+                `You are the pot holder for Month ${nextMonth} in ${group.name}. Your EMI is ₹${monthEmi}.`,
                 { type: 'pot_winner', groupId, month: nextMonth }
             ).catch(() => {});
         }
@@ -145,7 +146,7 @@ router.post('/cycle', auth, adminOnly, createCycleValidations, validate, async (
         notifyUsers([winnerMember._id], {
             type: 'pot_winner',
             title: 'You won the pot!',
-            body: `Congratulations! You are the pot holder for Month ${nextMonth} in ${group.name}. Your EMI is now ₹${monthReduced}.`,
+            body: `Congratulations! You are the pot holder for Month ${nextMonth} in ${group.name}. Your EMI is ₹${monthEmi}.`,
             data: { groupId: String(groupId), month: nextMonth },
         });
 

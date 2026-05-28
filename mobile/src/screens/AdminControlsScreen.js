@@ -26,8 +26,8 @@ function ActionRow({ icon, iconBg, iconColor, title, subtitle, onPress, badge, i
             onPress={onPress}
             activeOpacity={0.7}
         >
-            <View style={[styles.rowIcon, { backgroundColor: iconBg }]}>
-                <Ionicons name={icon} size={20} color={iconColor} />
+            <View style={styles.rowIcon}>
+                <Ionicons name={icon} size={26} color={iconColor} />
             </View>
             <View style={styles.rowInfo}>
                 <Text style={styles.rowTitle}>{title}</Text>
@@ -38,8 +38,8 @@ function ActionRow({ icon, iconBg, iconColor, title, subtitle, onPress, badge, i
                     <Text style={styles.rowBadgeTxt}>{badge}</Text>
                 </View>
             ) : null}
-            <View style={[styles.rowChev, { backgroundColor: iconBg }]}>
-                <Ionicons name="chevron-forward" size={14} color={iconColor} />
+            <View style={styles.rowChev}>
+                <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
             </View>
         </TouchableOpacity>
     );
@@ -97,7 +97,8 @@ export default function AdminControlsScreen({ navigation }) {
     const [plannedNextMonth, setPlannedNextMonth] = useState(null);
     const [plannedEmiAmount, setPlannedEmiAmount] = useState(null);
     const [plannedReducedEmi, setPlannedReducedEmi] = useState(null);
-    const [cycleReducedEmi, setCycleReducedEmi] = useState('');   // editable on confirm step
+    const [cycleReducedEmi, setCycleReducedEmi] = useState('');
+    const [noPlanGroup, setNoPlanGroup] = useState(null);   // { groupId, nextMonth } when plan missing
     const [reducedFocused, reducedFocusProps] = useInputFocus();
 
     // ── Bulk Notify state ──
@@ -144,6 +145,7 @@ export default function AdminControlsScreen({ navigation }) {
         setPlannedEmiAmount(null);
         setPlannedReducedEmi(null);
         setCycleReducedEmi('');
+        setNoPlanGroup(null);
         setShowCycle(true);
     };
 
@@ -156,13 +158,22 @@ export default function AdminControlsScreen({ navigation }) {
                 getPlannedWinner(groupId).catch(() => ({ data: {} })),
             ]);
             setEligible(eligibleRes.data.members || []);
-            const planned = planRes.data?.plannedWinnerId || null;
+            const planned   = planRes.data?.plannedWinnerId || null;
+            const nextMonth = planRes.data?.nextMonth || null;
+
+            // POT plan must be configured before running the draw — show inline prompt
+            if (!planned) {
+                setNoPlanGroup({ groupId, nextMonth });
+                return;
+            }
+
+            setNoPlanGroup(null);
             setPlannedWinnerId(planned);
-            setPlannedNextMonth(planRes.data?.nextMonth || null);
+            setPlannedNextMonth(nextMonth);
             setPlannedEmiAmount(planRes.data?.plannedEmiAmount ?? null);
             setPlannedReducedEmi(planRes.data?.plannedReducedEmi ?? null);
-            // Pre-select the planned winner if it's still eligible
-            if (planned && (eligibleRes.data.members || []).some(m => String(m._id) === String(planned))) {
+            // Pre-select the planned winner if still eligible
+            if ((eligibleRes.data.members || []).some(m => String(m._id) === String(planned))) {
                 setWinnerId(planned);
             } else {
                 setWinnerId('');
@@ -469,26 +480,52 @@ export default function AdminControlsScreen({ navigation }) {
                         allGroups.filter(g => g.status === 'active').length === 0 ? (
                             <Text style={styles.emptyHint}>No active groups found</Text>
                         ) : (
-                            allGroups.filter(g => g.status === 'active').map(g => {
-                                const active = cycleGroupId === g._id;
-                                return (
-                                    <TouchableOpacity
-                                        key={g._id}
-                                        style={[styles.selectRow, active && styles.selectRowActive]}
-                                        onPress={() => selectCycleGroup(g._id)}
-                                        disabled={loadingEligible}
-                                        activeOpacity={0.75}
-                                    >
-                                        <Text style={[styles.selectRowText, active && styles.selectRowTextActive]}>{g.name}</Text>
-                                        <Text style={[styles.selectRowSub, active && styles.selectRowSubActive]}>
-                                            Month {g.currentMonth}/{g.totalMonths} · {g.members?.length || 0} members
+                            <>
+                                {allGroups.filter(g => g.status === 'active').map(g => {
+                                    const active = cycleGroupId === g._id;
+                                    return (
+                                        <TouchableOpacity
+                                            key={g._id}
+                                            style={[styles.selectRow, active && styles.selectRowActive]}
+                                            onPress={() => selectCycleGroup(g._id)}
+                                            disabled={loadingEligible}
+                                            activeOpacity={0.75}
+                                        >
+                                            <Text style={[styles.selectRowText, active && styles.selectRowTextActive]}>{g.name}</Text>
+                                            <Text style={[styles.selectRowSub, active && styles.selectRowSubActive]}>
+                                                Month {g.currentMonth}/{g.totalMonths} · {g.members?.length || 0} members
+                                            </Text>
+                                            {loadingEligible && active && (
+                                                <ActivityIndicator size="small" color={colors.primaryDark} style={{ marginTop: 4 }} />
+                                            )}
+                                        </TouchableOpacity>
+                                    );
+                                })}
+
+                                {/* Inline POT plan missing warning */}
+                                {noPlanGroup && (
+                                    <View style={styles.noPlanCard}>
+                                        <View style={styles.noPlanTop}>
+                                            <Ionicons name="warning-outline" size={18} color={colors.warning} />
+                                            <Text style={styles.noPlanTitle}>POT Plan Required</Text>
+                                        </View>
+                                        <Text style={styles.noPlanBody}>
+                                            Month {noPlanGroup.nextMonth ?? '?'} has no planned winner. Configure the POT plan for this group before running the draw.
                                         </Text>
-                                        {loadingEligible && active && (
-                                            <ActivityIndicator size="small" color={colors.primaryDark} style={{ marginTop: 4 }} />
-                                        )}
-                                    </TouchableOpacity>
-                                );
-                            })
+                                        <TouchableOpacity
+                                            style={styles.noPlanBtn}
+                                            onPress={() => {
+                                                setShowCycle(false);
+                                                navigation.navigate('AdminPOTWinnerConfig', { groupId: noPlanGroup.groupId });
+                                            }}
+                                            activeOpacity={0.8}
+                                        >
+                                            <Ionicons name="settings-outline" size={14} color={colors.primary} />
+                                            <Text style={styles.noPlanBtnText}>Open POT Plan</Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                )}
+                            </>
                         )
                     ) : cycleStep === 2 ? (
                         <>
@@ -967,7 +1004,7 @@ function makeStyles(colors) {
             gap: 12,
         },
         rowDivider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-        rowIcon:    { width: 40, height: 40, borderRadius: 11, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+        rowIcon:    { width: 32, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
         rowInfo:    { flex: 1, minWidth: 0 },
         rowTitle:   { fontSize: 14, fontFamily: F.semibold, color: colors.text },
         rowSub:     { fontSize: 12, fontFamily: F.regular, color: colors.textSecondary, marginTop: 1, lineHeight: 16 },
@@ -979,7 +1016,6 @@ function makeStyles(colors) {
         },
         rowBadgeTxt: { fontSize: 12, fontFamily: F.bold, color: colors.warning },
         rowChev: {
-            width: 28, height: 28, borderRadius: 8,
             alignItems: 'center', justifyContent: 'center', flexShrink: 0,
         },
         overlay:         { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
@@ -1034,6 +1070,23 @@ function makeStyles(colors) {
         backLink:        { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
         backLinkText:    { fontSize: 13, fontFamily: F.medium, color: colors.primary },
         emptyHint:       { fontSize: 13, fontFamily: F.regular, color: colors.textSecondary, textAlign: 'center', marginTop: 20 },
+        noPlanCard: {
+            marginTop: 12,
+            backgroundColor: colors.warningLight,
+            borderWidth: 1, borderColor: colors.warning + '50',
+            borderRadius: 12, padding: 14,
+        },
+        noPlanTop:  { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
+        noPlanTitle:{ fontSize: 14, fontFamily: F.semibold, color: colors.warning },
+        noPlanBody: { fontSize: 12, fontFamily: F.regular, color: colors.warning, lineHeight: 18, marginBottom: 12 },
+        noPlanBtn: {
+            flexDirection: 'row', alignItems: 'center', gap: 6,
+            alignSelf: 'flex-start',
+            backgroundColor: colors.background,
+            borderWidth: 1, borderColor: colors.primary,
+            borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7,
+        },
+        noPlanBtnText: { fontSize: 13, fontFamily: F.semibold, color: colors.primary },
         plannedBanner:   {
             fontSize: 12, fontFamily: F.medium, color: colors.primary,
             backgroundColor: colors.primaryLight, borderRadius: 8,

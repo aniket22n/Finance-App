@@ -69,6 +69,7 @@ router.post('/initiate', auth, initiatePaymentValidations, validate, async (req,
 
         // amount = server-stored due, NOT req.body.amount.
         const amount = payment.amount;
+        const isResubmit = payment.status === 'rejected' || payment.status === 'failed';
 
         payment.upiRef = upiRef || '';
         payment.upiTransactionId = upiTransactionId || '';
@@ -76,15 +77,19 @@ router.post('/initiate', auth, initiatePaymentValidations, validate, async (req,
         if (receipt) payment.receipt = receipt;
         payment.status = 'paid';
         payment.paidAt = new Date();
+        if (isResubmit) payment.notes = '';  // clear old rejection reason
 
         await payment.save();
 
         // Notify all admins so the bell badge increments on the dashboard.
         const { notifyAllAdmins } = require('../utils/notify');
+        const notifBody = isResubmit
+            ? `${req.user.name || req.user.phone} resubmitted ₹${amount.toLocaleString('en-IN')} for ${group.name} · Month ${month}`
+            : `${req.user.name || req.user.phone} paid ₹${amount.toLocaleString('en-IN')} for ${group.name} · Month ${month}`;
         await notifyAllAdmins({
             type: 'payment_submitted',
-            title: 'New Payment Submitted',
-            body: `${req.user.name || req.user.phone} paid ₹${amount.toLocaleString('en-IN')} for ${group.name} · Month ${month}`,
+            title: isResubmit ? 'Payment Resubmitted' : 'New Payment Submitted',
+            body: notifBody,
             data: { paymentId: String(payment._id), groupId: String(groupId), month },
         });
 
@@ -237,10 +242,13 @@ router.post('/:id/remind', auth, adminOnly, async (req, res) => {
     }
 });
 
-// GET /api/payments/my/pending — Current user's pending payments
+// GET /api/payments/my/pending — Current user's pending + rejected payments
 router.get('/my/pending', auth, async (req, res) => {
     try {
-        const payments = await Payment.find({ user: req.user._id, status: 'pending' })
+        const payments = await Payment.find({
+            user: req.user._id,
+            status: { $in: ['pending', 'failed', 'rejected'] },
+        })
             .populate('group', 'name emiAmount reducedEmiAmount potAmount dueDate')
             .sort({ createdAt: -1 })
             .lean();
