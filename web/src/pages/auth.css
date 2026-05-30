@@ -1,0 +1,131 @@
+/* ── Auth flow — 1:1 with mobile auth screens (Fast Cash) ── */
+.auth2 {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: var(--background);
+  padding: 40px 24px;
+}
+.auth2-col { width: 100%; max-width: 420px; }
+
+/* back arrow row */
+.auth2-back {
+  width: 40px; height: 40px;
+  display: flex; align-items: center; justify-content: flex-start;
+  background: transparent; border: none; color: var(--text);
+  margin-bottom: 16px;
+}
+
+/* login logo + headings */
+.auth2-top { margin-bottom: 32px; }
+.auth2-top.center { display: flex; flex-direction: column; align-items: center; text-align: center; }
+.auth2-logo {
+  width: 60px; height: 60px; border-radius: 14px; margin-bottom: 16px;
+  background: var(--primary); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: var(--shadow-primary);
+}
+.auth2-title { font-size: 20px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+.auth2-title.lg { font-size: 24px; }
+.auth2-subtitle { font-size: 14px; color: var(--text-secondary); }
+.auth2-subtitle.sm { font-size: 13px; }
+
+/* phone input row */
+.auth2-phone {
+  display: flex; align-items: center; height: 56px;
+  border: 1px solid var(--border); border-radius: 10px;
+  background: var(--background-secondary);
+}
+.auth2-phone.focused { border-color: var(--primary); }
+.auth2-phone.err { border-color: var(--error); }
+.auth2-prefix { font-size: 15px; font-weight: 600; color: var(--primary); padding: 0 16px; }
+.auth2-divider { width: 1px; height: 24px; background: var(--border); }
+.auth2-phone input {
+  flex: 1; height: 56px; padding: 0 16px; border: none; outline: none;
+  background: transparent; font-size: 15px; color: var(--text);
+}
+.auth2-phone input::placeholder { color: var(--text-secondary); }
+
+.auth2-admin-note { font-size: 12px; font-weight: 500; color: var(--primary); margin-top: 8px; }
+
+/* PIN/OTP toggle */
+.auth2-toggle { display: flex; gap: 8px; margin-top: 16px; }
+.auth2-toggle-btn {
+  flex: 1; display: flex; align-items: center; gap: 6px;
+  padding: 12px 10px; border-radius: 10px;
+  border: 1px solid var(--border); background: var(--background-secondary);
+  color: var(--text-secondary); font-size: 12px; font-weight: 500;
+}
+.auth2-toggle-btn.active { border-color: var(--primary); background: var(--primary-light); color: var(--primary); font-weight: 600; }
+.auth2-toggle-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+/* code boxes (PIN + OTP) */
+.code-row { display: flex; justify-content: center; gap: 20px; }
+.code-box {
+  width: 60px; height: 60px; border-radius: 10px;
+  border: 1px solid var(--border); background: var(--background-secondary);
+  color: var(--text); font-size: 24px; font-weight: 700; text-align: center;
+  outline: none;
+}
+.code-box.filled { border-color: var(--primary); border-width: 2px; }
+.code-box.err { border-color: var(--error); border-width: 2px; }
+
+/* inline error pill */
+.auth2-error {
+  display: flex; align-items: center; gap: 6px;
+  padding: 8px 12px; border-radius: 8px;
+  background: var(--error-light); border: 1px solid var(--error);
+  color: var(--error); font-size: 12px; font-weight: 500;
+}
+
+.auth2-forgot {
+  display: block; margin-left: auto; background: none; border: none;
+  color: var(--primary); font-size: 12px; font-weight: 600; padding: 0;
+}
+
+.auth2-confirm-label {
+  font-size: 14px; font-weight: 700; color: var(--text);
+  text-align: center; margin: 8px 0 16px;
+}
+
+.auth2-timer { font-size: 12px; color: var(--text-tertiary); }
+
+/* large primary button */
+.auth2-btn {
+  width: 100%; height: 56px; border: none; border-radius: 12px;
+  background: var(--primary); color: #fff; font-size: 14px; font-weight: 600;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: var(--shadow-primary);
+}
+.auth2-btn:disabled { background: var(--text-tertiary); box-shadow: none; cursor: not-allowed; }
+
+.auth2-resend {
+  display: block; margin: 20px auto 0; padding: 8px; background: none; border: none;
+  color: var(--primary); font-size: 13px; font-weight: 600;
+}
+.auth2-resend:disabled { color: var(--text-tertiary); cursor: not-allowed; }
+
+/* footer */
+.auth2-footer { display: flex; flex-direction: column; align-items: center; gap: 12px; margin-top: 24px; }
+.auth2-foot-note { font-size: 11px; color: var(--text-secondary); text-align: center; }
+.auth2-link { background: none; border: none; color: var(--primary); font-size: 13px; font-weight: 600; padding: 0; }
+.auth2-foot-row { display: flex; align-items: center; }
+.auth2-foot-row span { font-size: 13px; color: var(--text-secondary); }
+
+/* signup pending */
+.pending-icon {
+  width: 88px; height: 88px; border-radius: 44px; margin: 0 auto 24px;
+  background: var(--background-secondary); border: 1px solid var(--border);
+  color: var(--primary); display: flex; align-items: center; justify-content: center;
+}
+.pending-card {
+  width: 100%; background: var(--background-secondary);
+  border: 1px solid var(--border); border-radius: 14px; padding: 0 16px; margin-bottom: 28px;
+}
+.pending-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; }
+.pending-row + .pending-row { border-top: 1px solid var(--border); }
+.pending-label { font-size: 13px; color: var(--text-secondary); }
+.pending-value { font-size: 13px; font-weight: 600; color: var(--text); }
+.pending-badge { background: #F59E0B; color: #fff; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 6px; }

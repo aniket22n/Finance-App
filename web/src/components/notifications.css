@@ -1,0 +1,97 @@
+.bell { display: inline-flex; }
+.bell-btn {
+  position: relative; background: transparent; border: none;
+  color: var(--text); display: flex; padding: 2px; cursor: pointer;
+}
+.bell-badge {
+  position: absolute; top: -4px; right: -6px;
+  min-width: 16px; height: 16px; padding: 0 4px;
+  border-radius: 8px; background: var(--error); color: #fff;
+  font-size: 9px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  border: 1.5px solid var(--background);
+}
+
+/* Backdrop + slide-down panel — anchored to the phone frame, mirrors mobile */
+.bell-backdrop {
+  position: absolute; inset: 0; z-index: 150;
+  background: rgba(0, 0, 0, 0.5); animation: bellFade .22s ease;
+}
+@keyframes bellFade { from { opacity: 0; } to { opacity: 1; } }
+
+.bell-panel {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 160;
+  height: 62%;
+  background: var(--background);
+  border-bottom-left-radius: 22px; border-bottom-right-radius: 22px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.22);
+  display: flex; flex-direction: column; overflow: hidden;
+  animation: bellDown .26s ease;
+}
+@keyframes bellDown { from { transform: translateY(-100%); } to { transform: none; } }
+
+.bell-drag { width: 40px; height: 4px; border-radius: 2px; background: var(--border-secondary); margin: 14px auto 10px; }
+.bell-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 16px 14px; border-bottom: 1px solid var(--border);
+}
+.bell-head-icon {
+  width: 32px; height: 32px; border-radius: 16px;
+  background: var(--primary-light); color: var(--primary);
+  border: 1px solid var(--primary);
+  display: flex; align-items: center; justify-content: center;
+}
+.bell-title { font-size: 15px; font-weight: 700; color: var(--text); }
+.bell-sub { font-size: 11px; color: var(--text-secondary); margin-top: 1px; }
+.bell-markall {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 6px 10px; border-radius: 8px;
+  background: var(--primary-light); color: var(--primary);
+  border: 1px solid var(--primary);
+  font-size: 11px; font-weight: 600; cursor: pointer;
+}
+.bell-close {
+  width: 30px; height: 30px; border-radius: 15px; border: none; cursor: pointer;
+  background: var(--background-secondary); color: var(--text-secondary);
+  display: flex; align-items: center; justify-content: center;
+}
+
+.bell-list { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 12px; }
+.bell-section {
+  font-size: 10px; font-weight: 700; letter-spacing: .8px; text-transform: uppercase;
+  color: var(--text-tertiary); padding: 14px 16px 6px;
+}
+
+.bell-item {
+  position: relative; display: flex; align-items: center; gap: 12px;
+  padding: 12px 16px; cursor: pointer; background: var(--background);
+}
+.bell-item:hover { background: var(--background-tertiary); }
+.bell-item.unread { background: var(--background-secondary); }
+.bell-item-icon {
+  width: 36px; height: 36px; border-radius: 18px; flex-shrink: 0;
+  border: 1px solid; display: flex; align-items: center; justify-content: center;
+}
+.bell-item-main { flex: 1; min-width: 0; }
+.bell-item-title { flex: 1; font-size: 13px; font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bell-item.unread .bell-item-title { font-weight: 700; }
+.bell-item-time { font-size: 11px; color: var(--text-tertiary); flex-shrink: 0; }
+.bell-item-body { font-size: 12px; color: var(--text-secondary); margin-top: 3px; line-height: 1.4; }
+.bell-dot { width: 8px; height: 8px; border-radius: 4px; background: var(--primary); flex-shrink: 0; margin-left: 8px; }
+.bell-item-del {
+  position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+  background: var(--background); border: 1px solid var(--border); border-radius: 8px;
+  color: var(--text-tertiary); width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+  opacity: 0; transition: opacity .15s;
+}
+.bell-item:hover .bell-item-del { opacity: 1; }
+.bell-item-del:hover { color: var(--error); border-color: var(--error); }
+
+.bell-empty { text-align: center; padding: 40px 24px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.bell-empty-icon {
+  width: 64px; height: 64px; border-radius: 32px; margin-bottom: 8px;
+  background: var(--primary-light); color: var(--primary);
+  border: 1px solid var(--primary);
+  display: flex; align-items: center; justify-content: center;
+}

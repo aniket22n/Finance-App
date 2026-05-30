@@ -1,0 +1,68 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   Phone-frame shell. The web app renders as the mobile phone app: a centered,
+   fixed-width column with an always-on bottom tab bar — identical to mobile on
+   any screen size. On a wide screen the column is centered on a neutral backdrop;
+   on a real phone it fills the viewport edge-to-edge.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+.app-shell {
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: var(--background-tertiary);
+  display: flex;
+  justify-content: center;
+}
+
+.phone {
+  position: relative;
+  width: 100%;
+  max-width: 440px;
+  height: 100vh;
+  height: 100dvh;
+  background: var(--background);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Subtle frame only on screens wide enough to show the backdrop. */
+@media (min-width: 480px) {
+  .phone {
+    height: min(100dvh, 920px);
+    margin: auto 0;
+    border-radius: 0;
+    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.18);
+    border-left: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+  }
+}
+
+/* Scrollable screen body; page-level sticky footers stick to the bottom of this. */
+.phone-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ── Bottom tab bar — pinned to the bottom of the phone column ── */
+.tabbar {
+  flex-shrink: 0;
+  display: flex;
+  height: var(--tabbar-h);
+  background: var(--background);
+  border-top: 1px solid var(--border);
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+.tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  color: var(--text-secondary);
+}
+.tab.active { color: var(--primary); }
+.tab-label { font-size: 11px; font-weight: 500; }
